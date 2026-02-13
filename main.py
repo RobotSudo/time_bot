@@ -98,7 +98,7 @@ async def mytime(interaction: discord.Interaction, time_str: str):
 
     except:
         await interaction.response.send_message(
-            "❌ Invalid time format.",
+            "❌ Invalid format. Example: 1:27 am or 13:27",
             ephemeral=True
         )
 
@@ -133,34 +133,6 @@ async def birthday(interaction: discord.Interaction, date: str):
         )
 
 # =============================
-# /time
-# =============================
-@bot.tree.command(name="time", description="Check someone's local time")
-async def time(interaction: discord.Interaction, member: discord.Member):
-
-    async with db.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT offset FROM users WHERE user_id = $1",
-            member.id
-        )
-
-    if not row or row["offset"] is None:
-        await interaction.response.send_message(
-            f"❌ {member.display_name} has not set timezone.",
-            ephemeral=True
-        )
-        return
-
-    utc_now = datetime.now(UTC)
-    local_time = utc_now + timedelta(hours=row["offset"])
-
-    await interaction.response.send_message(
-        f"🕒 **{member.display_name}'s Local Time**\n"
-        f"{local_time.strftime('%B %d, %Y — %I:%M %p')} "
-        f"(UTC{row['offset']:+})"
-    )
-
-# =============================
 # BIRTHDAY LOOP
 # =============================
 @tasks.loop(minutes=1)
@@ -185,16 +157,14 @@ async def birthday_loop():
 
             local_time = utc_now + timedelta(hours=row["offset"])
 
+            # Only run at user's midnight
             if local_time.hour == 0 and local_time.minute == 0:
 
                 today_key = local_time.strftime("%Y-%m-%d")
 
-                # prevent duplicate same-day trigger
+                # Prevent duplicate trigger
                 if row["midnight_checked"] == today_key:
                     continue
-
-                today = local_time.strftime("%m-%d")
-                current_year = local_time.year
 
                 async with db.acquire() as conn:
                     await conn.execute(
@@ -203,7 +173,18 @@ async def birthday_loop():
                         row["user_id"]
                     )
 
-                if today == row["birthday"]:
+                today = local_time.strftime("%m-%d")
+                current_year = local_time.year
+                birthday_value = row["birthday"]
+
+                # Handle Feb 29
+                if birthday_value == "02-29":
+                    try:
+                        datetime(current_year, 2, 29)
+                    except:
+                        birthday_value = "02-28"
+
+                if today == birthday_value:
 
                     # ADD ROLE
                     if role and role not in member.roles:
@@ -222,6 +203,7 @@ async def birthday_loop():
                                 current_year,
                                 row["user_id"]
                             )
+
                 else:
                     # REMOVE ROLE AFTER BIRTHDAY
                     if role and role in member.roles:
