@@ -131,6 +131,34 @@ async def birthday(interaction: discord.Interaction, date: str):
             "❌ Invalid format. Use MM-DD",
             ephemeral=True
         )
+# =============================
+# /time
+# =============================
+@bot.tree.command(name="time", description="Check someone's local time")
+@app_commands.describe(member="Select a member")
+async def time(interaction: discord.Interaction, member: discord.Member):
+
+    user_id = str(member.id)
+    data = user_data.get(user_id)
+
+    if not data or "offset" not in data:
+        await interaction.response.send_message(
+            f"❌ {member.display_name} has not set their timezone.",
+            ephemeral=True
+        )
+        return
+
+    utc_now = datetime.now(UTC)
+    local_time = utc_now + timedelta(hours=data["offset"])
+
+    formatted_time = local_time.strftime("%I:%M %p")
+    formatted_date = local_time.strftime("%B %d, %Y")
+
+    await interaction.response.send_message(
+        f"🕒 **{member.display_name}'s Local Time**\n"
+        f"📅 {formatted_date}\n"
+        f"⏰ {formatted_time} (UTC{data['offset']:+})"
+    )
 
 # =============================
 # BIRTHDAY CHECK
