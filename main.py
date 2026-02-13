@@ -76,23 +76,23 @@ async def mytime(interaction: discord.Interaction, time_str: str):
         )
 
         diff = local_time - now_utc
-        offset = round((diff.total_seconds() / 3600) * 2) / 2
+        utc_offset = round((diff.total_seconds() / 3600) * 2) / 2
 
-        if offset > 14:
-            offset -= 24
-        if offset < -12:
-            offset += 24
+        if utc_offset > 14:
+            utc_offset -= 24
+        if utc_offset < -12:
+            utc_offset += 24
 
         async with db.acquire() as conn:
             await conn.execute("""
-                INSERT INTO users (user_id, offset)
+                INSERT INTO users (user_id, utc_offset)
                 VALUES ($1, $2)
                 ON CONFLICT (user_id)
-                DO UPDATE SET offset = EXCLUDED.offset
-            """, interaction.user.id, offset)
+                DO UPDATE SET utc_offset = EXCLUDED.utc_offset
+            """, interaction.user.id, utc_offset)
 
         await interaction.response.send_message(
-            f"✅ Timezone saved (UTC{offset:+})",
+            f"✅ Timezone saved (UTC{utc_offset:+})",
             ephemeral=True
         )
 
@@ -148,21 +148,20 @@ async def birthday_loop():
 
         for row in users:
 
-            if not row["birthday"] or row["offset"] is None:
+            if not row["birthday"] or row["utc_offset"] is None:
                 continue
 
             member = guild.get_member(row["user_id"])
             if not member:
                 continue
 
-            local_time = utc_now + timedelta(hours=row["offset"])
+            local_time = utc_now + timedelta(hours=row["utc_offset"])
 
-            # Only run at user's midnight
+            # Only trigger at local midnight
             if local_time.hour == 0 and local_time.minute == 0:
 
                 today_key = local_time.strftime("%Y-%m-%d")
 
-                # Prevent duplicate trigger
                 if row["midnight_checked"] == today_key:
                     continue
 
@@ -203,7 +202,6 @@ async def birthday_loop():
                                 current_year,
                                 row["user_id"]
                             )
-
                 else:
                     # REMOVE ROLE AFTER BIRTHDAY
                     if role and role in member.roles:
