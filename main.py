@@ -92,14 +92,12 @@ async def mytime(interaction: discord.Interaction, time_str: str):
             """, interaction.user.id, utc_offset)
 
         await interaction.response.send_message(
-            f"✅ Timezone saved (UTC{utc_offset:+})",
-            ephemeral=True
+            f"✅ Timezone saved (UTC{utc_offset:+})"
         )
 
     except:
         await interaction.response.send_message(
-            "❌ Invalid format. Example: 1:27 am or 13:27",
-            ephemeral=True
+            "❌ Invalid format. Example: 1:27 pm or 13:27"
         )
 
 # =============================
