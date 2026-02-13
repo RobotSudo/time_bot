@@ -8,7 +8,7 @@ import os
 # =============================
 # CONFIG
 # =============================
-TOKEN = "MTQ2NzQwNTg0MzA2NTYwMjE0MQ.GN0O3X.CidnFbJPFsHhgdwYhUXjPP9MbrVfncRr02Hnnc"
+TOKEN = os.getenv("DISCORD_TOKEN")
 DATA_FILE = "user_data.json"
 
 BIRTHDAY_ROLE_NAME = "Birthday guy"
