@@ -120,14 +120,12 @@ async def birthday(interaction: discord.Interaction, date: str):
             """, interaction.user.id, f"{month:02d}-{day:02d}")
 
         await interaction.response.send_message(
-            f"🎉 Birthday saved as {month:02d}-{day:02d}",
-            ephemeral=True
+            f"🎉 Birthday saved as {month:02d}-{day:02d}"
         )
 
     except:
         await interaction.response.send_message(
-            "❌ Invalid format. Use MM-DD",
-            ephemeral=True
+            "❌ Invalid format. Use MM-DD"
         )
 # =============================
 # /time
@@ -144,8 +142,7 @@ async def time(interaction: discord.Interaction, member: discord.Member):
 
     if not row or row["utc_offset"] is None:
         await interaction.response.send_message(
-            f"❌ {member.display_name} has not set their timezone.",
-            ephemeral=True
+            f"❌ {member.display_name} has not set their timezone."
         )
         return
 
