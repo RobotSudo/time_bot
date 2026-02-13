@@ -35,7 +35,7 @@ async def setup_database():
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
-                offset FLOAT,
+                utc_offset FLOAT,
                 birthday TEXT,
                 last_announced INT,
                 midnight_checked TEXT
