@@ -22,8 +22,7 @@ intents.members = True
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
-
-db = None  # Global DB connection
+db = None
 
 # =============================
 # DATABASE SETUP
@@ -99,7 +98,7 @@ async def mytime(interaction: discord.Interaction, time_str: str):
 
     except:
         await interaction.response.send_message(
-            "❌ Invalid format.",
+            "❌ Invalid time format.",
             ephemeral=True
         )
 
@@ -129,7 +128,7 @@ async def birthday(interaction: discord.Interaction, date: str):
 
     except:
         await interaction.response.send_message(
-            "❌ Invalid format.",
+            "❌ Invalid format. Use MM-DD",
             ephemeral=True
         )
 
@@ -156,8 +155,8 @@ async def time(interaction: discord.Interaction, member: discord.Member):
     local_time = utc_now + timedelta(hours=row["offset"])
 
     await interaction.response.send_message(
-        f"🕒 {member.display_name}'s time: "
-        f"{local_time.strftime('%I:%M %p')} "
+        f"🕒 **{member.display_name}'s Local Time**\n"
+        f"{local_time.strftime('%B %d, %Y — %I:%M %p')} "
         f"(UTC{row['offset']:+})"
     )
 
@@ -172,6 +171,9 @@ async def birthday_loop():
         users = await conn.fetch("SELECT * FROM users")
 
     for guild in bot.guilds:
+        role = discord.utils.get(guild.roles, name=BIRTHDAY_ROLE_NAME)
+        channel = guild.get_channel(BIRTHDAY_CHANNEL_ID)
+
         for row in users:
 
             if not row["birthday"] or row["offset"] is None:
@@ -185,25 +187,50 @@ async def birthday_loop():
 
             if local_time.hour == 0 and local_time.minute == 0:
 
-                today = local_time.strftime("%m-%d")
-                if today != row["birthday"]:
+                today_key = local_time.strftime("%Y-%m-%d")
+
+                # prevent duplicate same-day trigger
+                if row["midnight_checked"] == today_key:
                     continue
 
-                role = discord.utils.get(guild.roles, name=BIRTHDAY_ROLE_NAME)
-                channel = guild.get_channel(BIRTHDAY_CHANNEL_ID)
+                today = local_time.strftime("%m-%d")
+                current_year = local_time.year
 
-                if role and role not in member.roles:
-                    await member.add_roles(role)
-
-                if channel:
-                    await channel.send(
-                        f"🎉 HAPPY BIRTHDAY {member.mention}! 🎉"
+                async with db.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE users SET midnight_checked = $1 WHERE user_id = $2",
+                        today_key,
+                        row["user_id"]
                     )
+
+                if today == row["birthday"]:
+
+                    # ADD ROLE
+                    if role and role not in member.roles:
+                        await member.add_roles(role)
+
+                    # ANNOUNCE ONCE PER YEAR
+                    if row["last_announced"] != current_year:
+                        if channel:
+                            await channel.send(
+                                f"🎉🎂 HAPPY BIRTHDAY {member.mention}! 🎂🎉"
+                            )
+
+                        async with db.acquire() as conn:
+                            await conn.execute(
+                                "UPDATE users SET last_announced = $1 WHERE user_id = $2",
+                                current_year,
+                                row["user_id"]
+                            )
+                else:
+                    # REMOVE ROLE AFTER BIRTHDAY
+                    if role and role in member.roles:
+                        await member.remove_roles(role)
 
 # =============================
 # RUN
 # =============================
-if TOKEN:
+if TOKEN and DATABASE_URL:
     bot.run(TOKEN)
 else:
-    print("❌ DISCORD_TOKEN not set.")
+    print("❌ Missing DISCORD_TOKEN or DATABASE_URL")
