@@ -2,14 +2,14 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 from datetime import datetime, timedelta, UTC
-import json
+import asyncpg
 import os
 
 # =============================
 # CONFIG
 # =============================
 TOKEN = os.getenv("DISCORD_TOKEN")
-DATA_FILE = "user_data.json"
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 BIRTHDAY_ROLE_NAME = "Birthday guy"
 BIRTHDAY_CHANNEL_ID = 1468164390460199055
@@ -19,32 +19,36 @@ BIRTHDAY_CHANNEL_ID = 1468164390460199055
 # =============================
 intents = discord.Intents.default()
 intents.members = True
-intents.presences = True
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# =============================
-# LOAD / SAVE
-# =============================
-if os.path.exists(DATA_FILE):
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            user_data = json.load(f)
-    except:
-        user_data = {}
-else:
-    user_data = {}
+db = None  # Global DB connection
 
-def save_data():
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(user_data, f, indent=2)
+# =============================
+# DATABASE SETUP
+# =============================
+async def setup_database():
+    global db
+    db = await asyncpg.create_pool(DATABASE_URL)
+
+    async with db.acquire() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY,
+                offset FLOAT,
+                birthday TEXT,
+                last_announced INT,
+                midnight_checked TEXT
+            )
+        """)
 
 # =============================
 # READY
 # =============================
 @bot.event
 async def on_ready():
+    await setup_database()
     await bot.tree.sync()
     if not birthday_loop.is_running():
         birthday_loop.start()
@@ -80,22 +84,22 @@ async def mytime(interaction: discord.Interaction, time_str: str):
         if offset < -12:
             offset += 24
 
-        user_id = str(interaction.user.id)
-        user_data.setdefault(user_id, {})
-        user_data[user_id]["offset"] = offset
-        save_data()
+        async with db.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO users (user_id, offset)
+                VALUES ($1, $2)
+                ON CONFLICT (user_id)
+                DO UPDATE SET offset = EXCLUDED.offset
+            """, interaction.user.id, offset)
 
         await interaction.response.send_message(
             f"✅ Timezone saved (UTC{offset:+})",
             ephemeral=True
         )
 
-        # 🔥 Re-check birthday in case time change affects it
-        await check_member_birthday(interaction.guild, interaction.user)
-
     except:
         await interaction.response.send_message(
-            "❌ Invalid format. Example: 1:27 am or 13:27",
+            "❌ Invalid format.",
             ephemeral=True
         )
 
@@ -109,140 +113,92 @@ async def birthday(interaction: discord.Interaction, date: str):
         month, day = map(int, date.split("-"))
         datetime(2000, month, day)
 
-        user_id = str(interaction.user.id)
-        user_data.setdefault(user_id, {})
-        user_data[user_id]["birthday"] = f"{month:02d}-{day:02d}"
-
-        # Reset announcement flag
-        user_data[user_id].pop("last_announced", None)
-
-        save_data()
+        async with db.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO users (user_id, birthday, last_announced)
+                VALUES ($1, $2, NULL)
+                ON CONFLICT (user_id)
+                DO UPDATE SET birthday = EXCLUDED.birthday,
+                              last_announced = NULL
+            """, interaction.user.id, f"{month:02d}-{day:02d}")
 
         await interaction.response.send_message(
             f"🎉 Birthday saved as {month:02d}-{day:02d}",
             ephemeral=True
         )
 
-        # 🔥 Immediately re-check birthday state
-        await check_member_birthday(interaction.guild, interaction.user)
-
     except:
         await interaction.response.send_message(
-            "❌ Invalid format. Use MM-DD",
+            "❌ Invalid format.",
             ephemeral=True
         )
+
 # =============================
 # /time
 # =============================
 @bot.tree.command(name="time", description="Check someone's local time")
-@app_commands.describe(member="Select a member")
 async def time(interaction: discord.Interaction, member: discord.Member):
 
-    user_id = str(member.id)
-    data = user_data.get(user_id)
+    async with db.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT offset FROM users WHERE user_id = $1",
+            member.id
+        )
 
-    if not data or "offset" not in data:
+    if not row or row["offset"] is None:
         await interaction.response.send_message(
-            f"❌ {member.display_name} has not set their timezone.",
+            f"❌ {member.display_name} has not set timezone.",
             ephemeral=True
         )
         return
 
     utc_now = datetime.now(UTC)
-    local_time = utc_now + timedelta(hours=data["offset"])
-
-    formatted_time = local_time.strftime("%I:%M %p")
-    formatted_date = local_time.strftime("%B %d, %Y")
+    local_time = utc_now + timedelta(hours=row["offset"])
 
     await interaction.response.send_message(
-        f"🕒 **{member.display_name}'s Local Time**\n"
-        f"📅 {formatted_date}\n"
-        f"⏰ {formatted_time} (UTC{data['offset']:+})"
+        f"🕒 {member.display_name}'s time: "
+        f"{local_time.strftime('%I:%M %p')} "
+        f"(UTC{row['offset']:+})"
     )
 
 # =============================
-# BIRTHDAY CHECK
-# =============================
-async def check_member_birthday(guild, member):
-    role = discord.utils.get(guild.roles, name=BIRTHDAY_ROLE_NAME)
-    channel = guild.get_channel(BIRTHDAY_CHANNEL_ID)
-
-    if not role:
-        return
-
-    user_id = str(member.id)
-    data = user_data.get(user_id)
-
-    if not data or "birthday" not in data or "offset" not in data:
-        return
-
-    utc_now = datetime.now(UTC)
-    local_time = utc_now + timedelta(hours=data["offset"])
-
-    today = local_time.strftime("%m-%d")
-    current_year = local_time.year
-    birthday_value = data["birthday"]
-
-    # Handle Feb 29
-    if birthday_value == "02-29":
-        try:
-            datetime(current_year, 2, 29)
-        except:
-            birthday_value = "02-28"
-
-    try:
-        if today == birthday_value:
-            # 🎉 Add role
-            if role not in member.roles:
-                await member.add_roles(role)
-
-            # 🎂 Send announcement once per year
-            if data.get("last_announced") != current_year:
-                if channel:
-                    await channel.send(
-                        f"🎉🎂 HAPPY BIRTHDAY {member.mention}! 🎂🎉\n"
-                        f"Wishing you an amazing year ahead! 🥳"
-                    )
-                data["last_announced"] = current_year
-                save_data()
-        else:
-            # 🌙 Remove role if not birthday anymore
-            if role in member.roles:
-                await member.remove_roles(role)
-
-    except Exception as e:
-        print(f"Role error for {member}: {e}")
-
-# =============================
-# MIDNIGHT LOOP (Optimized)
+# BIRTHDAY LOOP
 # =============================
 @tasks.loop(minutes=1)
 async def birthday_loop():
     utc_now = datetime.now(UTC)
 
-    for guild in bot.guilds:
-        for user_id, data in user_data.items():
+    async with db.acquire() as conn:
+        users = await conn.fetch("SELECT * FROM users")
 
-            if "birthday" not in data or "offset" not in data:
+    for guild in bot.guilds:
+        for row in users:
+
+            if not row["birthday"] or row["offset"] is None:
                 continue
 
-            member = guild.get_member(int(user_id))
+            member = guild.get_member(row["user_id"])
             if not member:
                 continue
 
-            local_time = utc_now + timedelta(hours=data["offset"])
+            local_time = utc_now + timedelta(hours=row["offset"])
 
             if local_time.hour == 0 and local_time.minute == 0:
 
-                today_key = local_time.strftime("%Y-%m-%d")
-
-                if data.get("midnight_checked") == today_key:
+                today = local_time.strftime("%m-%d")
+                if today != row["birthday"]:
                     continue
 
-                data["midnight_checked"] = today_key
-                save_data()
+                role = discord.utils.get(guild.roles, name=BIRTHDAY_ROLE_NAME)
+                channel = guild.get_channel(BIRTHDAY_CHANNEL_ID)
 
-                await check_member_birthday(guild, member)
+                if role and role not in member.roles:
+                    await member.add_roles(role)
+
+                if channel:
+                    await channel.send(
+                        f"🎉 HAPPY BIRTHDAY {member.mention}! 🎉"
+                    )
 
 # =============================
 # RUN
@@ -250,4 +206,4 @@ async def birthday_loop():
 if TOKEN:
     bot.run(TOKEN)
 else:
-    print("❌ DISCORD_TOKEN environment variable not set.")
+    print("❌ DISCORD_TOKEN not set.")
