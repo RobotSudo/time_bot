@@ -236,7 +236,7 @@ async def birthday_loop():
 # ==========================
 # MENTION LISTENER
 # ==========================
-TARGET_USER_ID = 1288247401752166453  # your username (without @)
+TARGET_USER_ID = 1288247401752166453
 GIF_SUDO_TAG = "https://media.giphy.com/media/n7TMv8jwpKRA5HdVt2/giphy.gif"
 
 @bot.event
@@ -244,12 +244,15 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # Only respond to real mentions
-    if TARGET_USER_ID in [user.id for user in message.mentions]:
-        await message.channel.send(GIF_SUDO_TAG)
+    if any(user.id == TARGET_USER_ID for user in message.mentions):
+        embed = discord.Embed(
+            description="**sudo rn:**",
+            color=discord.Color.red()
+        )
+        embed.set_image(url=GIF_SUDO_TAG)
+        await message.channel.send(embed=embed)
 
     await bot.process_commands(message)
-
 # =============================
 # RUN
 # =============================
