@@ -236,21 +236,17 @@ async def birthday_loop():
 # ==========================
 # MENTION LISTENER
 # ==========================
-TARGET_USERNAME = "sudo_exec"  # your username (without @)
+TARGET_USER_ID = "123456789012345678 "  # your username (without @)
 GIF_SUDO_TAG = "https://media.giphy.com/media/n7TMv8jwpKRA5HdVt2/giphy.gif"
 
 @bot.event
 async def on_message(message):
-    # Ignore bot's own messages
     if message.author.bot:
         return
 
-    # Check if you were mentioned
-    if bot.user not in message.mentions:
-        for user in message.mentions:
-            if user.name == TARGET_USERNAME:
-                await message.channel.send(GIF_SUDO_TAG)
-                break
+    # Only respond to real mentions
+    if TARGET_USER_ID in [user.id for user in message.mentions]:
+        await message.channel.send(GIF_SUDO_TAG)
 
     await bot.process_commands(message)
 
