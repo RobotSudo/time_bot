@@ -244,6 +244,11 @@ async def on_message(message):
     if message.author.bot:
         return
 
+    # Ignore replies
+    if message.reference:
+        await bot.process_commands(message)
+        return
+
     if any(user.id == TARGET_USER_ID for user in message.mentions):
         embed = discord.Embed(
             description="sudo be like:",
