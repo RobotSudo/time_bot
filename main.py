@@ -249,30 +249,9 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # Ignore replies
-    if message.reference:
-        await bot.process_commands(message)
-        return
-
-    if any(user.id == SUDO_ID for user in message.mentions):
-        embed = discord.Embed(
-            description="sudo be like:",
-            color=discord.Color.red()
-        )
-        embed.set_image(url=GIF_SUDO_TAG)
-        await message.channel.send(embed=embed)
-
-    await bot.process_commands(message)
-
-# =============================
-# HIMENO REPLY RESPONSE
-# =============================
-
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
-
+    # =============================
+    # HIMENO REPLY RESPONSE
+    # =============================
     if message.reference and message.reference.resolved:
         if message.reference.resolved.author.id == HIMENO_ID:
             embed = discord.Embed(
@@ -280,6 +259,18 @@ async def on_message(message):
                 color=discord.Color.red()
             )
             embed.set_image(url=GIF_HIMENO_REPLY)
+            await message.channel.send(embed=embed)
+
+    # =============================
+    # SUDO TAG (Ignore replies)
+    # =============================
+    if not message.reference:
+        if any(user.id == SUDO_ID for user in message.mentions):
+            embed = discord.Embed(
+                description="sudo be like:",
+                color=discord.Color.red()
+            )
+            embed.set_image(url=GIF_SUDO_TAG)
             await message.channel.send(embed=embed)
 
     await bot.process_commands(message)
