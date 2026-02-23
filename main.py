@@ -233,6 +233,27 @@ async def birthday_loop():
                     if role and role in member.roles:
                         await member.remove_roles(role)
 
+# ==========================
+# MENTION LISTENER
+# ==========================
+TARGET_USERNAME = "sudo_exec"  # your username (without @)
+GIF_SUDO_TAG = "https://media.giphy.com/media/n7TMv8jwpKRA5HdVt2/giphy.gif"
+
+@bot.event
+async def on_message(message):
+    # Ignore bot's own messages
+    if message.author.bot:
+        return
+
+    # Check if you were mentioned
+    if bot.user not in message.mentions:
+        for user in message.mentions:
+            if user.name == TARGET_USERNAME:
+                await message.channel.send(GIF_SUDO_TAG)
+                break
+
+    await bot.process_commands(message)
+
 # =============================
 # RUN
 # =============================
