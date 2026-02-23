@@ -233,8 +233,12 @@ async def birthday_loop():
                     if role and role in member.roles:
                         await member.remove_roles(role)
 
+# ================ BREAK ================
+
 # ==========================
 # MENTION LISTENER
+#
+# SUDO TAG
 # ==========================
 TARGET_USER_ID = 1288247401752166453
 GIF_SUDO_TAG = "https://media.giphy.com/media/n7TMv8jwpKRA5HdVt2/giphy.gif"
@@ -258,6 +262,8 @@ async def on_message(message):
         await message.channel.send(embed=embed)
 
     await bot.process_commands(message)
+
+
 # =============================
 # RUN
 # =============================
