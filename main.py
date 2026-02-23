@@ -240,7 +240,8 @@ async def birthday_loop():
 #
 # SUDO TAG
 # ==========================
-TARGET_USER_ID = 1288247401752166453
+SUDO_ID = 1288247401752166453
+HIMENO_ID = 1467405843065602141
 GIF_SUDO_TAG = "https://media.giphy.com/media/n7TMv8jwpKRA5HdVt2/giphy.gif"
 
 @bot.event
@@ -253,7 +254,7 @@ async def on_message(message):
         await bot.process_commands(message)
         return
 
-    if any(user.id == TARGET_USER_ID for user in message.mentions):
+    if any(user.id == SUDO_ID for user in message.mentions):
         embed = discord.Embed(
             description="sudo be like:",
             color=discord.Color.red()
