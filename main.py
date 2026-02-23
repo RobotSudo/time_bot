@@ -236,7 +236,7 @@ async def birthday_loop():
 # ==========================
 # MENTION LISTENER
 # ==========================
-TARGET_USER_ID = "123456789012345678 "  # your username (without @)
+TARGET_USER_ID = "1288247401752166453 "  # your username (without @)
 GIF_SUDO_TAG = "https://media.giphy.com/media/n7TMv8jwpKRA5HdVt2/giphy.gif"
 
 @bot.event
