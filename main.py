@@ -35,7 +35,6 @@ async def setup_database():
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
-                username TEXT,
                 utc_offset FLOAT,
                 birthday TEXT,
                 last_announced INT,
@@ -50,10 +49,8 @@ async def setup_database():
 async def on_ready():
     await setup_database()
     await bot.tree.sync()
-
     if not birthday_loop.is_running():
         birthday_loop.start()
-
     print(f"✅ Logged in as {bot.user}")
 
 # =============================
@@ -88,13 +85,11 @@ async def mytime(interaction: discord.Interaction, time_str: str):
 
         async with db.acquire() as conn:
             await conn.execute("""
-                INSERT INTO users (user_id, username, utc_offset)
-                VALUES ($1, $2, $3)
+                INSERT INTO users (user_id, utc_offset)
+                VALUES ($1, $2)
                 ON CONFLICT (user_id)
-                DO UPDATE SET 
-                    utc_offset = EXCLUDED.utc_offset,
-                    username = EXCLUDED.username
-            """, interaction.user.id, interaction.user.name, utc_offset)
+                DO UPDATE SET utc_offset = EXCLUDED.utc_offset
+            """, interaction.user.id, utc_offset)
 
         await interaction.response.send_message(
             f"✅ Timezone saved (UTC{utc_offset:+})"
@@ -117,14 +112,12 @@ async def birthday(interaction: discord.Interaction, date: str):
 
         async with db.acquire() as conn:
             await conn.execute("""
-                INSERT INTO users (user_id, username, birthday, last_announced)
-                VALUES ($1, $2, $3, NULL)
+                INSERT INTO users (user_id, birthday, last_announced)
+                VALUES ($1, $2, NULL)
                 ON CONFLICT (user_id)
-                DO UPDATE SET 
-                    birthday = EXCLUDED.birthday,
-                    username = EXCLUDED.username,
-                    last_announced = NULL
-            """, interaction.user.id, interaction.user.name, f"{month:02d}-{day:02d}")
+                DO UPDATE SET birthday = EXCLUDED.birthday,
+                              last_announced = NULL
+            """, interaction.user.id, f"{month:02d}-{day:02d}")
 
         await interaction.response.send_message(
             f"🎉 Birthday saved as {month:02d}-{day:02d}"
@@ -134,7 +127,6 @@ async def birthday(interaction: discord.Interaction, date: str):
         await interaction.response.send_message(
             "❌ Invalid format. Use MM-DD"
         )
-
 # =============================
 # /time
 # =============================
@@ -144,7 +136,7 @@ async def time(interaction: discord.Interaction, member: discord.Member):
 
     async with db.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT utc_offset, username FROM users WHERE user_id = $1",
+            "SELECT utc_offset FROM users WHERE user_id = $1",
             member.id
         )
 
@@ -160,10 +152,8 @@ async def time(interaction: discord.Interaction, member: discord.Member):
     formatted_time = local_time.strftime("%I:%M %p")
     formatted_date = local_time.strftime("%B %d, %Y")
 
-    display_name = row["username"] if row["username"] else member.display_name
-
     await interaction.response.send_message(
-        f"🕒 **{display_name}'s Local Time**\n"
+        f"🕒 **{member.display_name}'s Local Time**\n"
         f"📅 {formatted_date}\n"
         f"⏰ {formatted_time} (UTC{row['utc_offset']:+})"
     )
@@ -193,6 +183,7 @@ async def birthday_loop():
 
             local_time = utc_now + timedelta(hours=row["utc_offset"])
 
+            # Only trigger at local midnight
             if local_time.hour == 0 and local_time.minute == 0:
 
                 today_key = local_time.strftime("%Y-%m-%d")
@@ -200,19 +191,18 @@ async def birthday_loop():
                 if row["midnight_checked"] == today_key:
                     continue
 
-                # Update username daily
                 async with db.acquire() as conn:
-                    await conn.execute("""
-                        UPDATE users 
-                        SET midnight_checked = $1,
-                            username = $2
-                        WHERE user_id = $3
-                    """, today_key, member.name, row["user_id"])
+                    await conn.execute(
+                        "UPDATE users SET midnight_checked = $1 WHERE user_id = $2",
+                        today_key,
+                        row["user_id"]
+                    )
 
                 today = local_time.strftime("%m-%d")
                 current_year = local_time.year
                 birthday_value = row["birthday"]
 
+                # Handle Feb 29
                 if birthday_value == "02-29":
                     try:
                         datetime(current_year, 2, 29)
@@ -221,9 +211,11 @@ async def birthday_loop():
 
                 if today == birthday_value:
 
+                    # ADD ROLE
                     if role and role not in member.roles:
                         await member.add_roles(role)
 
+                    # ANNOUNCE ONCE PER YEAR
                     if row["last_announced"] != current_year:
                         if channel:
                             await channel.send(
@@ -231,12 +223,13 @@ async def birthday_loop():
                             )
 
                         async with db.acquire() as conn:
-                            await conn.execute("""
-                                UPDATE users 
-                                SET last_announced = $1 
-                                WHERE user_id = $2
-                            """, current_year, row["user_id"])
+                            await conn.execute(
+                                "UPDATE users SET last_announced = $1 WHERE user_id = $2",
+                                current_year,
+                                row["user_id"]
+                            )
                 else:
+                    # REMOVE ROLE AFTER BIRTHDAY
                     if role and role in member.roles:
                         await member.remove_roles(role)
 
