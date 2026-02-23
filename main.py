@@ -240,6 +240,48 @@ async def birthday_loop():
                     if role and role in member.roles:
                         await member.remove_roles(role)
 
+# ================ MENTION LISTENER BREAK ================
+
+SUDO_ID = 1288247401752166453
+HIMENO_ID = 1467405843065602141
+GIF_SUDO_TAG = "https://media.giphy.com/media/n7TMv8jwpKRA5HdVt2/giphy.gif"
+GIF_HIMENO_REPLY = "https://media.discordapp.net/stickers/1323198799191080960.webp?size=160&quality=lossless"
+
+# ==========================
+# SUDO TAG
+# ==========================
+
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    # =============================
+    # HIMENO REPLY RESPONSE
+    # =============================
+    if message.reference and message.reference.resolved:
+        if message.reference.resolved.author.id == HIMENO_ID:
+            embed = discord.Embed(
+                description="what did you say?",
+                color=discord.Color.red()
+            )
+            embed.set_image(url=GIF_HIMENO_REPLY)
+            await message.channel.send(embed=embed)
+
+    # =============================
+    # SUDO TAG (Ignore replies)
+    # =============================
+    if not message.reference:
+        if any(user.id == SUDO_ID for user in message.mentions):
+            embed = discord.Embed(
+                description="sudo be like:",
+                color=discord.Color.red()
+            )
+            embed.set_image(url=GIF_SUDO_TAG)
+            await message.channel.send(embed=embed)
+
+    await bot.process_commands(message)
+
 # =============================
 # RUN
 # =============================
