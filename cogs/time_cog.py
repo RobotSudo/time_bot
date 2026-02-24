@@ -1,156 +1,39 @@
 import discord
-from discord import app_commands
-from discord.ext import commands, tasks
-from datetime import datetime, timedelta, UTC
-from config import BIRTHDAY_ROLE_NAME, BIRTHDAY_CHANNEL_ID
-from database import get_db
+from discord.ext import commands
+from config import SUDO_ID, HIMENO_ID, GIF_SUDO_TAG, GIF_HIMENO_REPLY
 
 
-class TimeCog(commands.Cog):
+class ReplyCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.birthday_loop.start()
 
-    # =============================
-    # /mytime
-    # =============================
-    @app_commands.command(name="mytime", description="Set your local time")
-    async def mytime(self, interaction: discord.Interaction, time_str: str):
-        try:
-            now_utc = datetime.now(UTC)
-            time_str = time_str.strip().lower()
-
-            if "am" in time_str or "pm" in time_str:
-                local_time = datetime.strptime(time_str, "%I:%M %p")
-            else:
-                local_time = datetime.strptime(time_str, "%H:%M")
-
-            local_time = local_time.replace(
-                year=now_utc.year,
-                month=now_utc.month,
-                day=now_utc.day,
-                tzinfo=UTC
-            )
-
-            diff = local_time - now_utc
-            utc_offset = round((diff.total_seconds() / 3600) * 2) / 2
-
-            if utc_offset > 14:
-                utc_offset -= 24
-            if utc_offset < -12:
-                utc_offset += 24
-
-            db = await get_db()
-            async with db.acquire() as conn:
-                await conn.execute("""
-                    INSERT INTO users (user_id, username, utc_offset)
-                    VALUES ($1, $2, $3)
-                    ON CONFLICT (user_id)
-                    DO UPDATE SET utc_offset = EXCLUDED.utc_offset,
-                                  username = EXCLUDED.username
-                """, interaction.user.id, interaction.user.name, utc_offset)
-
-            await interaction.response.send_message(
-                f"✅ Timezone saved (UTC{utc_offset:+})"
-            )
-
-        except:
-            await interaction.response.send_message(
-                "❌ Invalid format. Example: 1:27 pm or 13:27"
-            )
-
-    # =============================
-    # /birthday
-    # =============================
-    @app_commands.command(name="birthday", description="Set your birthday (MM-DD)")
-    async def birthday(self, interaction: discord.Interaction, date: str):
-        try:
-            month, day = map(int, date.split("-"))
-            datetime(2000, month, day)
-
-            db = await get_db()
-            async with db.acquire() as conn:
-                await conn.execute("""
-                    INSERT INTO users (user_id, username, birthday, last_announced)
-                    VALUES ($1, $2, $3, NULL)
-                    ON CONFLICT (user_id)
-                    DO UPDATE SET birthday = EXCLUDED.birthday,
-                                  username = EXCLUDED.username,
-                                  last_announced = NULL
-                """, interaction.user.id, interaction.user.name, f"{month:02d}-{day:02d}")
-
-            await interaction.response.send_message(
-                f"🎉 Birthday saved as {month:02d}-{day:02d}"
-            )
-
-        except:
-            await interaction.response.send_message("❌ Invalid format. Use MM-DD")
-
-    # =============================
-    # /time
-    # =============================
-    @app_commands.command(name="time", description="Check someone's local time")
-    async def time(self, interaction: discord.Interaction, member: discord.Member):
-
-        db = await get_db()
-        async with db.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT utc_offset, username FROM users WHERE user_id = $1",
-                member.id
-            )
-
-        if not row or row["utc_offset"] is None:
-            await interaction.response.send_message(
-                f"❌ {member.display_name} has not set their timezone."
-            )
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if message.author.bot:
             return
 
-        utc_now = datetime.now(UTC)
-        local_time = utc_now + timedelta(hours=row["utc_offset"])
+        # HIMENO reply
+        if message.reference and message.reference.resolved:
+            if message.reference.resolved.author.id == HIMENO_ID:
+                embed = discord.Embed(
+                    description="what did you say?",
+                    color=discord.Color.red()
+                )
+                embed.set_image(url=GIF_HIMENO_REPLY)
+                await message.channel.send(embed=embed)
 
-        await interaction.response.send_message(
-            f"🕒 **{member.display_name}'s Local Time**\n"
-            f"📅 {local_time.strftime('%B %d, %Y')}\n"
-            f"⏰ {local_time.strftime('%I:%M %p')} (UTC{row['utc_offset']:+})"
-        )
+        # SUDO tag
+        if not message.reference:
+            if any(user.id == SUDO_ID for user in message.mentions):
+                embed = discord.Embed(
+                    description="sudo be like:",
+                    color=discord.Color.red()
+                )
+                embed.set_image(url=GIF_SUDO_TAG)
+                await message.channel.send(embed=embed)
 
-    # =============================
-    # BIRTHDAY LOOP
-    # =============================
-    @tasks.loop(minutes=1)
-    async def birthday_loop(self):
-        utc_now = datetime.now(UTC)
-        db = await get_db()
-
-        async with db.acquire() as conn:
-            users = await conn.fetch("SELECT * FROM users")
-
-        for guild in self.bot.guilds:
-            role = discord.utils.get(guild.roles, name=BIRTHDAY_ROLE_NAME)
-            channel = guild.get_channel(BIRTHDAY_CHANNEL_ID)
-
-            for row in users:
-                if not row["birthday"] or row["utc_offset"] is None:
-                    continue
-
-                member = guild.get_member(row["user_id"])
-                if not member:
-                    continue
-
-                local_time = utc_now + timedelta(hours=row["utc_offset"])
-                today = local_time.strftime("%m-%d")
-
-                if today == row["birthday"]:
-                    if role and role not in member.roles:
-                        await member.add_roles(role)
-                        if channel:
-                            await channel.send(
-                                f"🎉🎂 HAPPY BIRTHDAY {member.mention}! 🎂🎉"
-                            )
-                else:
-                    if role and role in member.roles:
-                        await member.remove_roles(role)
+        await self.bot.process_commands(message)
 
 
 async def setup(bot):
-    await bot.add_cog(TimeCog(bot))
+    await bot.add_cog(ReplyCog(bot))
