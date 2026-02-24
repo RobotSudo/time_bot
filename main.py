@@ -12,8 +12,12 @@ intents.message_content = True
 class MyBot(commands.Bot):
     async def setup_hook(self):
         await setup_database()
+
         await self.load_extension("cogs.time_cog")
         await self.load_extension("cogs.reply_cog")
+
+        # THIS WAS MISSING
+        await self.tree.sync()
 
 
 bot = MyBot(command_prefix="!", intents=intents)
