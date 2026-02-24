@@ -8,11 +8,11 @@ class ReplyCog(commands.Cog):
         self.bot = bot
 
     @commands.Cog.listener()
-    async def on_message(self, message):
+    async def on_message(self, message: discord.Message):
         if message.author.bot:
             return
 
-        # HIMENO reply
+        # HIMENO reply reaction
         if message.reference and message.reference.resolved:
             if message.reference.resolved.author.id == HIMENO_ID:
                 embed = discord.Embed(
@@ -22,20 +22,17 @@ class ReplyCog(commands.Cog):
                 embed.set_image(url=GIF_HIMENO_REPLY)
                 await message.channel.send(embed=embed)
 
-        # SUDO tag
-        if not message.reference:
-            if any(user.id == SUDO_ID for user in message.mentions):
-                embed = discord.Embed(
-                    description="sudo be like:",
-                    color=discord.Color.red()
-                )
-                embed.set_image(url=GIF_SUDO_TAG)
-                await message.channel.send(embed=embed)
+        # SUDO mention reaction
+        if any(user.id == SUDO_ID for user in message.mentions):
+            embed = discord.Embed(
+                description="sudo be like:",
+                color=discord.Color.red()
+            )
+            embed.set_image(url=GIF_SUDO_TAG)
+            await message.channel.send(embed=embed)
 
         await self.bot.process_commands(message)
 
 
 async def setup(bot):
-    # SAFETY CHECK — prevents double load
-    if "ReplyCog" not in bot.cogs:
-        await bot.add_cog(ReplyCog(bot))
+    await bot.add_cog(ReplyCog(bot))
