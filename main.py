@@ -289,3 +289,6 @@ if TOKEN and DATABASE_URL:
     bot.run(TOKEN)
 else:
     print("❌ Missing DISCORD_TOKEN or DATABASE_URL")
+
+
+#hello this is a test
