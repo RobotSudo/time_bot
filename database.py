@@ -3,7 +3,6 @@ from config import DATABASE_URL
 
 db = None
 
-
 async def setup_database():
     global db
     db = await asyncpg.create_pool(DATABASE_URL)
@@ -19,3 +18,6 @@ async def setup_database():
                 midnight_checked TEXT
             )
         """)
+
+async def get_db():
+    return db
