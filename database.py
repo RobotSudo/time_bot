@@ -1,13 +1,19 @@
 import asyncpg
 from config import DATABASE_URL
 
-db = None
+db_pool = None
+
 
 async def setup_database():
-    global db
-    db = await asyncpg.create_pool(DATABASE_URL)
+    global db_pool
 
-    async with db.acquire() as conn:
+    if not DATABASE_URL:
+        print("❌ DATABASE_URL missing")
+        return
+
+    db_pool = await asyncpg.create_pool(DATABASE_URL)
+
+    async with db_pool.acquire() as conn:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
@@ -19,5 +25,8 @@ async def setup_database():
             )
         """)
 
-async def get_db():
-    return db
+    print("✅ Database connected")
+
+
+def get_db():
+    return db_pool
