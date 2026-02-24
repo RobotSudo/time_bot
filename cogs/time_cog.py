@@ -19,8 +19,6 @@ class TimeCog(commands.Cog):
         if not self.birthday_loop.is_running():
             self.birthday_loop.start()
 
-        await self.bot.tree.sync()
-
     # =============================
     # /mytime
     # =============================
@@ -125,3 +123,4 @@ class TimeCog(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(TimeCog(bot))
+
