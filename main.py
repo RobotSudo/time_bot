@@ -11,13 +11,18 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    await setup_database()
-    await bot.load_extension("cogs.time_cog")
-    await bot.load_extension("cogs.reply_cog")
-    await bot.tree.sync()
     print(f"✅ Logged in as {bot.user}")
 
+async def main():
+    await setup_database()
+
+    await bot.load_extension("cogs.time_cog")
+    await bot.load_extension("cogs.reply_cog")
+
+    await bot.start(TOKEN)
+
 if TOKEN:
-    bot.run(TOKEN)
+    import asyncio
+    asyncio.run(main())
 else:
     print("❌ Missing DISCORD_TOKEN")
