@@ -343,21 +343,6 @@ async def mebelike(interaction: discord.Interaction, gif: str):
 
 # ================ END OF THE CODE ================
 
-# DATABASE SETUP
-
-async def setup_database():
-    global db
-    db = await asyncpg.create_pool(DATABASE_URL)
-
-    async with db.acquire() as conn:
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS mebelike (
-                user_id BIGINT PRIMARY KEY,
-                gif_url TEXT NOT NULL
-            );
-        """)
-
-
 
 # =============================
 # RUN
