@@ -363,15 +363,16 @@ async def mebelike(
     # =============================
     async with db.acquire() as conn:
         await conn.execute("""
-            INSERT INTO mebelike (user_id, gif_url)
-            VALUES ($1, $2)
+            INSERT INTO mebelike (user_id, username, gif_url)
+            VALUES ($1, $2, $3)
             ON CONFLICT (user_id)
-            DO UPDATE SET gif_url = EXCLUDED.gif_url
-        """, interaction.user.id, final_url)
-
-    await interaction.response.send_message(
-        "✅ Your '@you be like:' media has been saved!",
-        ephemeral=True
+            DO UPDATE SET 
+                gif_url = EXCLUDED.gif_url,
+                username = EXCLUDED.username
+        """,
+        interaction.user.id,
+        interaction.user.name,   # <-- This updates username
+        final_url
     )
 
 
@@ -379,7 +380,6 @@ async def mebelike(
 
 
 # ================ END OF THE CODE ================
-
 
 # =============================
 # RUN
