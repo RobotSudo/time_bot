@@ -49,6 +49,7 @@ async def setup_database():
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS mebelike (
                 user_id BIGINT PRIMARY KEY,
+                username TEXT,
                 gif_url TEXT NOT NULL
             )
         """)
