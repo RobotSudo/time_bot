@@ -4,6 +4,7 @@ from discord.ext import commands, tasks
 from datetime import datetime, timedelta, UTC
 import asyncpg
 import os
+import io
 
 # =============================
 # CONFIG
@@ -13,6 +14,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 BIRTHDAY_ROLE_NAME = "Birthday guy"
 BIRTHDAY_CHANNEL_ID = 1468166938386497670
+STORAGE_CHANNEL_ID = 1477040555493032006
 
 # =============================
 # INTENTS
@@ -307,21 +309,20 @@ async def on_message(message):
 
 
 # =============================
-# /mebelike (Supports link OR upload)
+# /mebelike (FULL SAFE VERSION)
 # =============================
 @bot.tree.command(name="mebelike", description="Set your '@you be like:' GIF")
 @app_commands.describe(
     gif="Direct link to your GIF (optional)",
-    image="Upload a GIF or image (optional)"
+    file="Upload a GIF or image (optional)"
 )
 async def mebelike(
     interaction: discord.Interaction,
     gif: str = None,
-    image: discord.Attachment = None
+    file: discord.Attachment = None
 ):
 
-    # Must provide at least one
-    if not gif and not image:
+    if not gif and not file:
         await interaction.response.send_message(
             "❌ Provide either a GIF link or upload an image.",
             ephemeral=True
@@ -331,27 +332,78 @@ async def mebelike(
     final_url = None
 
     # =============================
-    # If user uploaded file
+    # FILE UPLOAD (PERMANENT STORAGE)
     # =============================
-    if image:
+    if file:
 
-        # Validate file type
-        if not image.content_type.startswith("image"):
+        allowed_types = [
+            "image/gif",
+            "image/png",
+            "image/jpeg",
+            "image/webp"
+        ]
+
+        if not file.content_type or file.content_type not in allowed_types:
             await interaction.response.send_message(
-                "❌ File must be an image or GIF.",
+                "❌ Only GIF, PNG, JPG, or WEBP allowed.",
                 ephemeral=True
             )
             return
 
-        final_url = image.url
+        if file.size > 8 * 1024 * 1024:
+            await interaction.response.send_message(
+                "❌ File too large (max 8MB).",
+                ephemeral=True
+            )
+            return
+
+        # Download file
+        file_bytes = await file.read()
+
+        # Upload to permanent storage channel
+        storage_channel = bot.get_channel(STORAGE_CHANNEL_ID)
+
+        if not storage_channel:
+            await interaction.response.send_message(
+                "❌ Storage channel not found.",
+                ephemeral=True
+            )
+            return
+
+        message = await storage_channel.send(
+            file=discord.File(
+                fp=io.BytesIO(file_bytes),
+                filename=file.filename
+            )
+        )
+
+        # Get permanent CDN URL
+        final_url = message.attachments[0].url
 
     # =============================
-    # If user provided link
+    # LINK HANDLING
     # =============================
     elif gif:
+
+        gif = gif.strip()
+
         if not gif.startswith("http"):
             await interaction.response.send_message(
-                "❌ Please provide a valid direct GIF link.",
+                "❌ Invalid link.",
+                ephemeral=True
+            )
+            return
+
+        allowed_domains = [
+            "media.tenor.com",
+            "media.giphy.com",
+            "cdn.discordapp.com",
+            "media.discordapp.net"
+        ]
+
+        if not any(domain in gif for domain in allowed_domains):
+            await interaction.response.send_message(
+                "⚠️ Use a direct media link (Tenor/Giphy/Discord).",
                 ephemeral=True
             )
             return
@@ -359,20 +411,25 @@ async def mebelike(
         final_url = gif
 
     # =============================
-    # Save to database
+    # SAVE TO DATABASE
     # =============================
     async with db.acquire() as conn:
         await conn.execute("""
-            INSERT INTO mebelike (user_id, username, gif_url)
+            INSERT INTO mebelike (user_id, gif_url, username)
             VALUES ($1, $2, $3)
             ON CONFLICT (user_id)
-            DO UPDATE SET 
+            DO UPDATE SET
                 gif_url = EXCLUDED.gif_url,
                 username = EXCLUDED.username
         """,
         interaction.user.id,
-        interaction.user.name,   # <-- This updates username
-        final_url
+        final_url,
+        interaction.user.display_name
+        )
+
+    await interaction.response.send_message(
+        "✅ Your '@you be like:' media has been saved!",
+        ephemeral=True
     )
 
 
