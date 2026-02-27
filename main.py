@@ -4,6 +4,7 @@ from discord.ext import commands, tasks
 from datetime import datetime, timedelta, UTC
 import asyncpg
 import os
+import aiohttp
 
 # =============================
 # CONFIG
@@ -306,15 +307,66 @@ async def on_message(message):
 # ================ NEW CODE ================
 
 # =============================
+# TENOR LINK CONVERTER
+# =============================
+async def convert_tenor_link(tenor_url: str):
+
+    try:
+        # Extract GIF ID (last number in URL)
+        gif_id = tenor_url.rstrip("/").split("-")[-1]
+
+        api_key = os.getenv("TENOR_API_KEY")
+
+        if not api_key:
+            return None
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"https://tenor.googleapis.com/v2/posts?ids={gif_id}&key={api_key}"
+            ) as response:
+
+                data = await response.json()
+
+                if "results" in data and len(data["results"]) > 0:
+                    media_formats = data["results"][0]["media_formats"]
+
+                    # Prefer GIF format
+                    if "gif" in media_formats:
+                        return media_formats["gif"]["url"]
+
+        return None
+
+    except:
+        return None
+
+# =============================
 # /mebelike
 # =============================
 @bot.tree.command(name="mebelike", description="Set your '@you be like:' GIF")
-@app_commands.describe(gif="Direct link to your GIF")
+@app_commands.describe(gif="Tenor, Giphy, or direct GIF link")
 async def mebelike(interaction: discord.Interaction, gif: str):
 
+    gif = gif.strip()
+
+    # =============================
+    # AUTO-CONVERT TENOR LINK
+    # =============================
+    if "tenor.com/view" in gif:
+        converted = await convert_tenor_link(gif)
+
+        if not converted:
+            await interaction.response.send_message(
+                "❌ Could not convert Tenor link. Try a direct GIF link.",
+                ephemeral=True
+            )
+            return
+
+        gif = converted
+
+    # Basic validation
     if not gif.startswith("http"):
         await interaction.response.send_message(
-            "❌ Please provide a valid direct GIF link.",
+            "❌ Please provide a valid GIF link.",
             ephemeral=True
         )
         return
@@ -328,7 +380,7 @@ async def mebelike(interaction: discord.Interaction, gif: str):
         """, interaction.user.id, gif)
 
     await interaction.response.send_message(
-        "✅ Your '@you be like:' GIF has been saved!",
+        "✅ Your GIF has been saved!",
         ephemeral=True
     )
 
