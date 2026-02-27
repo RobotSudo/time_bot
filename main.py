@@ -303,38 +303,75 @@ async def on_message(message):
                 await message.channel.send(embed=embed)
 
     await bot.process_commands(message)
-# ================ NEW CODE ================
+
 
 # =============================
-# /mebelike
+# /mebelike (Supports link OR upload)
 # =============================
 @bot.tree.command(name="mebelike", description="Set your '@you be like:' GIF")
-@app_commands.describe(gif="Direct link to your GIF")
-async def mebelike(interaction: discord.Interaction, gif: str):
+@app_commands.describe(
+    gif="Direct link to your GIF (optional)",
+    image="Upload a GIF or image (optional)"
+)
+async def mebelike(
+    interaction: discord.Interaction,
+    gif: str = None,
+    image: discord.Attachment = None
+):
 
-    if not gif.startswith("http"):
+    # Must provide at least one
+    if not gif and not image:
         await interaction.response.send_message(
-            "❌ Please provide a valid direct GIF link.",
+            "❌ Provide either a GIF link or upload an image.",
             ephemeral=True
         )
         return
 
+    final_url = None
+
+    # =============================
+    # If user uploaded file
+    # =============================
+    if image:
+
+        # Validate file type
+        if not image.content_type.startswith("image"):
+            await interaction.response.send_message(
+                "❌ File must be an image or GIF.",
+                ephemeral=True
+            )
+            return
+
+        final_url = image.url
+
+    # =============================
+    # If user provided link
+    # =============================
+    elif gif:
+        if not gif.startswith("http"):
+            await interaction.response.send_message(
+                "❌ Please provide a valid direct GIF link.",
+                ephemeral=True
+            )
+            return
+
+        final_url = gif
+
+    # =============================
+    # Save to database
+    # =============================
     async with db.acquire() as conn:
         await conn.execute("""
             INSERT INTO mebelike (user_id, gif_url)
             VALUES ($1, $2)
             ON CONFLICT (user_id)
             DO UPDATE SET gif_url = EXCLUDED.gif_url
-        """, interaction.user.id, gif)
+        """, interaction.user.id, final_url)
 
     await interaction.response.send_message(
-        "✅ Your '@you be like:' GIF has been saved!",
+        "✅ Your '@you be like:' media has been saved!",
         ephemeral=True
     )
-
-
-
-
 
 
 
