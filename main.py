@@ -260,6 +260,12 @@ HIMENO_ID = 1467405843065602141
 GIF_SUDO_TAG = "https://media.giphy.com/media/n7TMv8jwpKRA5HdVt2/giphy.gif"
 GIF_HIMENO_REPLY = "https://media.discordapp.net/stickers/1323198799191080960.webp?size=160&quality=lossless"
 
+from collections import defaultdict
+from datetime import datetime, timedelta, UTC
+
+# Persistent tracker
+himeno_trigger_tracker = defaultdict(list)
+
 # =============================
 # MESSAGE LISTENER
 # =============================
@@ -270,10 +276,11 @@ async def on_message(message):
         return
 
     # =============================
-    # HIMENO REPLY RESPONSE
+    # HIMENO REPLY RESPONSE + AUTO TIMEOUT
     # =============================
     if message.reference and message.reference.resolved:
         if message.reference.resolved.author.id == HIMENO_ID:
+
             embed = discord.Embed(
                 description="what did you say?",
                 color=discord.Color.red()
@@ -281,8 +288,42 @@ async def on_message(message):
             embed.set_image(url=GIF_HIMENO_REPLY)
             await message.channel.send(embed=embed)
 
+            user_id = message.author.id
+            now = datetime.now(UTC)
+
+            # Add timestamp
+            himeno_trigger_tracker[user_id].append(now)
+
+            # Remove entries older than 5 minutes
+            five_minutes_ago = now - timedelta(minutes=5)
+            himeno_trigger_tracker[user_id] = [
+                t for t in himeno_trigger_tracker[user_id]
+                if t > five_minutes_ago
+            ]
+
+            # If triggered 3 times within 5 minutes
+            if len(himeno_trigger_tracker[user_id]) >= 3:
+
+                try:
+                    await message.author.timeout(
+                        timedelta(minutes=5),
+                        reason="Triggered Himeno 3 times in 5 minutes"
+                    )
+
+                    await message.channel.send(
+                        f"⛔ {message.author.mention} timed out for 5 minutes."
+                    )
+
+                except Exception as e:
+                    print("Timeout failed:", e)
+
+                # Reset counter after punishment
+                himeno_trigger_tracker[user_id].clear()
+
         await bot.process_commands(message)
         return
+
+    await bot.process_commands(message)
 
     # =============================
     # CUSTOM MEBELIKE SYSTEM
