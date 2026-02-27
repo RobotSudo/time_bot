@@ -32,6 +32,8 @@ async def setup_database():
     db = await asyncpg.create_pool(DATABASE_URL)
 
     async with db.acquire() as conn:
+
+        # USERS TABLE (timezone + birthday)
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
@@ -40,6 +42,14 @@ async def setup_database():
                 birthday TEXT,
                 last_announced INT,
                 midnight_checked TEXT
+            )
+        """)
+
+        # MEBELIKE TABLE (tag gifs)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS mebelike (
+                user_id BIGINT PRIMARY KEY,
+                gif_url TEXT NOT NULL
             )
         """)
 
@@ -55,7 +65,7 @@ async def on_ready():
         birthday_loop.start()
 
     print(f"✅ Logged in as {bot.user}")
-
+    
 # =============================
 # /mytime
 # =============================
@@ -247,12 +257,12 @@ HIMENO_ID = 1467405843065602141
 GIF_SUDO_TAG = "https://media.giphy.com/media/n7TMv8jwpKRA5HdVt2/giphy.gif"
 GIF_HIMENO_REPLY = "https://media.discordapp.net/stickers/1323198799191080960.webp?size=160&quality=lossless"
 
-# ==========================
-# SUDO TAG
-# ==========================
-
+# =============================
+# MESSAGE LISTENER
+# =============================
 @bot.event
 async def on_message(message):
+
     if message.author.bot:
         return
 
@@ -268,19 +278,86 @@ async def on_message(message):
             embed.set_image(url=GIF_HIMENO_REPLY)
             await message.channel.send(embed=embed)
 
+        await bot.process_commands(message)
+        return
+
     # =============================
-    # SUDO TAG (Ignore replies)
+    # CUSTOM MEBELIKE SYSTEM
     # =============================
-    if not message.reference:
-        if any(user.id == SUDO_ID for user in message.mentions):
-            embed = discord.Embed(
-                description="sudo be like:",
-                color=discord.Color.red()
-            )
-            embed.set_image(url=GIF_SUDO_TAG)
-            await message.channel.send(embed=embed)
+    if message.mentions:
+
+        for mentioned_user in message.mentions:
+
+            async with db.acquire() as conn:
+                record = await conn.fetchrow("""
+                    SELECT gif_url FROM mebelike
+                    WHERE user_id = $1
+                """, mentioned_user.id)
+
+            if record:
+                embed = discord.Embed(
+                    description=f"{mentioned_user.display_name} be like:",
+                    color=discord.Color.red()
+                )
+                embed.set_image(url=record["gif_url"])
+                await message.channel.send(embed=embed)
 
     await bot.process_commands(message)
+# ================ NEW CODE ================
+
+# =============================
+# /mebelike
+# =============================
+@bot.tree.command(name="mebelike", description="Set your '@you be like:' GIF")
+@app_commands.describe(gif="Direct link to your GIF")
+async def mebelike(interaction: discord.Interaction, gif: str):
+
+    if not gif.startswith("http"):
+        await interaction.response.send_message(
+            "❌ Please provide a valid direct GIF link.",
+            ephemeral=True
+        )
+        return
+
+    async with db.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO mebelike (user_id, gif_url)
+            VALUES ($1, $2)
+            ON CONFLICT (user_id)
+            DO UPDATE SET gif_url = EXCLUDED.gif_url
+        """, interaction.user.id, gif)
+
+    await interaction.response.send_message(
+        "✅ Your '@you be like:' GIF has been saved!",
+        ephemeral=True
+    )
+
+
+
+
+
+
+
+
+
+
+# ================ END OF THE CODE ================
+
+# DATABASE SETUP
+
+async def setup_database():
+    global db
+    db = await asyncpg.create_pool(DATABASE_URL)
+
+    async with db.acquire() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS mebelike (
+                user_id BIGINT PRIMARY KEY,
+                gif_url TEXT NOT NULL
+            );
+        """)
+
+
 
 # =============================
 # RUN
