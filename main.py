@@ -27,6 +27,7 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 db = None
+gn_last_trigger = None
 
 # =============================
 # DATABASE SETUP
@@ -57,6 +58,16 @@ async def setup_database():
                 gif_url TEXT NOT NULL
             )
         """)
+
+        # GOODNIGHT GIFS TABLE
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS goodnight_gifs (
+                id SERIAL PRIMARY KEY,
+                guild_id BIGINT NOT NULL,
+                url TEXT NOT NULL
+            )
+        """)
+
 
 # =============================
 # READY
@@ -477,37 +488,37 @@ async def mebelike(
 
 # ================ GOOD NIGHT WISHES ================
 
-GOODNIGHT_GIF = "https://media.tenor.com/xxxxxxxxAAAAd/peixe-dormindo.gif"  
-# MUST be:
-# - media.tenor.com
-# - media.discordapp.net / cdn.discordapp.com
-# - media.giphy.com
-# - AND end with .gif / .png / .jpg
+# =====================================================
+# READY EVENT
+# =====================================================
 
-gn_last_trigger = None
-
-# =============================
-# VALIDATION FUNCTION
-# =============================
-
-def is_valid_gif_url(url: str) -> bool:
-    valid_domains = [
-        "media.tenor.com",
-        "media.discordapp.net",
-        "cdn.discordapp.com",
-        "media.giphy.com"
-    ]
-
-    # Must end with image extension
-    if not re.search(r"\.(gif|png|jpg|webp)$", url):
-        return False
-
-    return any(domain in url for domain in valid_domains)
+@bot.event
+async def on_ready():
+    await setup_database()
+    await bot.tree.sync()
+    print(f"✅ Logged in as {bot.user}")
 
 
-# =============================
-# MESSAGE LISTENER
-# =============================
+# =====================================================
+# HELPER: GET RANDOM GIF
+# =====================================================
+
+async def get_random_gif(guild_id: int):
+    async with db.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT url FROM goodnight_gifs WHERE guild_id = $1",
+            guild_id
+        )
+
+        if not rows:
+            return None
+
+        return random.choice(rows)["url"]
+
+
+# =====================================================
+# GOODNIGHT MESSAGE TRIGGER
+# =====================================================
 
 @bot.event
 async def on_message(message):
@@ -517,16 +528,13 @@ async def on_message(message):
     if message.author.bot:
         return
 
+    if not message.guild:
+        return  # Ignore DMs
+
     content = message.content.lower().strip()
+    triggers = ["gn", "good night", "me go eep", "sleep"]
 
-    goodnight_triggers = [
-        "gn",
-        "good night",
-        "me go eep",
-        "sleep"
-    ]
-
-    if any(trigger in content for trigger in goodnight_triggers):
+    if any(trigger in content for trigger in triggers):
 
         now = datetime.now(UTC)
 
@@ -536,20 +544,123 @@ async def on_message(message):
 
         gn_last_trigger = now
 
+        gif_url = await get_random_gif(message.guild.id)
+
         embed = discord.Embed(
             description="🌙 Good night!",
             color=discord.Color.dark_blue()
         )
 
-        # Only attach if valid direct GIF
-        if is_valid_gif_url(GOODNIGHT_GIF):
-            embed.set_image(url=GOODNIGHT_GIF)
+        if gif_url:
+            embed.set_image(url=gif_url)
         else:
-            embed.description += "\n\n⚠️ Invalid GIF link configured."
+            embed.description += "\n(No GIFs added yet. Admins can use /addgngif)"
 
         await message.channel.send(embed=embed)
 
     await bot.process_commands(message)
+
+
+# =====================================================
+# ADMIN COMMAND: ADD GIF
+# =====================================================
+
+@bot.tree.command(name="addgngif", description="Add a goodnight GIF (Admin only)")
+@app_commands.describe(url="Direct GIF link ending in .gif")
+async def addgngif(interaction: discord.Interaction, url: str):
+
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message(
+            "❌ Admins only.",
+            ephemeral=True
+        )
+        return
+
+    if not url.endswith(".gif"):
+        await interaction.response.send_message(
+            "❌ Must be a direct .gif link.",
+            ephemeral=True
+        )
+        return
+
+    async with db.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO goodnight_gifs (guild_id, url) VALUES ($1, $2)",
+            interaction.guild.id,
+            url
+        )
+
+    await interaction.response.send_message(
+        "✅ GIF added successfully.",
+        ephemeral=True
+    )
+
+
+# =====================================================
+# ADMIN COMMAND: REMOVE GIF
+# =====================================================
+
+@bot.tree.command(name="removegngif", description="Remove a goodnight GIF by ID (Admin only)")
+@app_commands.describe(gif_id="ID of the GIF (use /listgngifs)")
+async def removegngif(interaction: discord.Interaction, gif_id: int):
+
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message(
+            "❌ Admins only.",
+            ephemeral=True
+        )
+        return
+
+    async with db.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM goodnight_gifs WHERE id = $1 AND guild_id = $2",
+            gif_id,
+            interaction.guild.id
+        )
+
+    if result == "DELETE 0":
+        await interaction.response.send_message(
+            "❌ GIF not found.",
+            ephemeral=True
+        )
+    else:
+        await interaction.response.send_message(
+            "✅ GIF removed.",
+            ephemeral=True
+        )
+
+
+# =====================================================
+# LIST GIFS
+# =====================================================
+
+@bot.tree.command(name="listgngifs", description="List all goodnight GIFs")
+async def listgngifs(interaction: discord.Interaction):
+
+    async with db.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, url FROM goodnight_gifs WHERE guild_id = $1",
+            interaction.guild.id
+        )
+
+    if not rows:
+        await interaction.response.send_message(
+            "No GIFs stored yet.",
+            ephemeral=True
+        )
+        return
+
+    description = ""
+    for row in rows:
+        description += f"**ID {row['id']}** → {row['url']}\n"
+
+    embed = discord.Embed(
+        title="🌙 Stored Goodnight GIFs",
+        description=description,
+        color=discord.Color.dark_blue()
+    )
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ================ END OF THE CODE ================
 
