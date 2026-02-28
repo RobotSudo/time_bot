@@ -505,76 +505,145 @@ async def get_random_gif(guild_id: int):
         return random.choice(rows)["url"]
 
 
-# =====================================================
-# GOODNIGHT MESSAGE TRIGGER
-# =====================================================
-
+# =============================
+# MESSAGE LISTENER
+# =============================
+@bot.event
+async def on_message(message):
 
     global gn_last_trigger
 
     if message.author.bot:
         return
 
-    if not message.guild:
-        return
+    # =====================================================
+    # HIMENO REPLY AUTO TIMEOUT
+    # =====================================================
+    if message.reference and message.reference.resolved:
+        if message.reference.resolved.author.id == HIMENO_ID:
 
-    content = message.content.lower().strip()
-    triggers = ["gn", "good night", "me go eep", "sleep"]
+            embed = discord.Embed(
+                description="what did you say?",
+                color=discord.Color.red()
+            )
+            embed.set_image(url="https://media.discordapp.net/stickers/1323198799191080960.webp?size=160&quality=lossless")
+            await message.channel.send(embed=embed)
 
-    if any(trigger in content for trigger in triggers):
+            user_id = message.author.id
+            now = datetime.now(UTC)
 
-        now = datetime.now(UTC)
+            himeno_trigger_tracker[user_id].append(now)
 
-        # Global 10 minute cooldown
-        if gn_last_trigger and (now - gn_last_trigger) < timedelta(minutes=1): # <-----  COOLDOWN SETUP
-            return
+            five_minutes_ago = now - timedelta(minutes=5)
+            himeno_trigger_tracker[user_id] = [
+                t for t in himeno_trigger_tracker[user_id]
+                if t > five_minutes_ago
+            ]
 
-        gn_last_trigger = now
+            if len(himeno_trigger_tracker[user_id]) >= 3:
+                try:
+                    await message.author.timeout(
+                        timedelta(minutes=5),
+                        reason="Triggered Himeno 3 times in 5 minutes"
+                    )
+                    await message.channel.send(
+                        f"⛔ {message.author.mention} timed out for 5 minutes."
+                    )
+                except Exception as e:
+                    print("Timeout failed:", e)
 
-        gif_url = await get_random_gif(message.guild.id)
+                himeno_trigger_tracker[user_id].clear()
 
-        embed = discord.Embed(
-            description="🌙 Good night!",
-            color=discord.Color.dark_blue()
-        )
+    # =====================================================
+    # MEBELIKE SYSTEM
+    # =====================================================
+    if message.mentions:
+        for mentioned_user in message.mentions:
+            async with db.acquire() as conn:
+                record = await conn.fetchrow(
+                    "SELECT gif_url FROM mebelike WHERE user_id = $1",
+                    mentioned_user.id
+                )
 
-        if gif_url:
-            embed.set_image(url=gif_url)
-        else:
-            embed.description += "\n(No GIFs added yet. Admins can use /addgngif)"
+            if record:
+                embed = discord.Embed(
+                    description=f"{mentioned_user.display_name} be like:",
+                    color=discord.Color.red()
+                )
+                embed.set_image(url=record["gif_url"])
+                await message.channel.send(embed=embed)
 
-        await message.channel.send(embed=embed)
+    # =====================================================
+    # GOODNIGHT SYSTEM
+    # =====================================================
+    if message.guild:
+
+        content = message.content.lower().strip()
+        triggers = ["gn", "good night", "me go eep", "sleep"]
+
+        if any(trigger in content for trigger in triggers):
+
+            now = datetime.now(UTC)
+
+            if not gn_last_trigger or (now - gn_last_trigger) >= timedelta(minutes=1):
+
+                gn_last_trigger = now
+
+                gif_url = await get_random_gif(message.guild.id)
+
+                embed = discord.Embed(
+                    description="🌙 Good night!",
+                    color=discord.Color.dark_blue()
+                )
+
+                if gif_url:
+                    embed.set_image(url=gif_url)
+                else:
+                    embed.description += "\n(No GIFs added yet. Admins can use /addgngif)"
+
+                await message.channel.send(embed=embed)
 
     await bot.process_commands(message)
 
-
 # =====================================================
-# ADMIN COMMAND: ADD GIF (UPLOAD OR URL)
+# ADMIN: ADD GOODNIGHT GIF
 # =====================================================
-
 @bot.tree.command(name="addgngif", description="Add a goodnight GIF (Admin only)")
-@app_commands.describe(
-    url="Direct image/GIF link (optional)",
-    file="Upload a GIF or image (optional)"
-)
-async def addgngif(
-    interaction: discord.Interaction,
-    url: str = None,
-    file: discord.Attachment = None
-):
+async def addgngif(interaction: discord.Interaction, url: str = None, file: discord.Attachment = None):
 
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ Admins only.", ephemeral=True)
         return
 
     if not url and not file:
-        await interaction.response.send_message(
-            "❌ Provide either a URL or upload a file.",
-            ephemeral=True
-        )
+        await interaction.response.send_message("❌ Provide URL or upload file.", ephemeral=True)
         return
 
     final_url = None
+
+    if file:
+        if file.size > 8 * 1024 * 1024:
+            await interaction.response.send_message("❌ File too large (8MB max).", ephemeral=True)
+            return
+
+        storage_channel = bot.get_channel(STORAGE_CHANNEL_ID)
+        sent = await storage_channel.send(file=await file.to_file())
+        final_url = sent.attachments[0].url
+
+    else:
+        if not url.startswith("http"):
+            await interaction.response.send_message("❌ Invalid URL.", ephemeral=True)
+            return
+        final_url = url
+
+    async with db.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO goodnight_gifs (guild_id, url) VALUES ($1, $2)",
+            interaction.guild.id,
+            final_url
+        )
+
+    await interaction.response.send_message("✅ Goodnight GIF added.", ephemeral=True)
 
     # =============================
     # FILE UPLOAD
