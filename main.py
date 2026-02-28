@@ -458,7 +458,7 @@ async def on_message(message):
     if message.guild:
         content = message.content.lower().strip()
         
-        triggers = ["gn", "good night", "me go eep", "sleep"]
+        triggers = ["gn", "good night", "goodnight", "me go eep", "sleep"]
 
         if re.search(r"\b(gn|good night|me go eep|sleep)\b", content):
 
