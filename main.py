@@ -9,9 +9,8 @@ from collections import defaultdict
 import re
 import random
 
-# =============================
-# CONFIG
-# =============================
+# ================ CONFIG ================
+
 TOKEN = os.getenv("DISCORD_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -19,20 +18,17 @@ BIRTHDAY_ROLE_NAME = "Birthday guy"
 BIRTHDAY_CHANNEL_ID = 1468166938386497670
 STORAGE_CHANNEL_ID = 1477040555493032006
 
-# =============================
-# INTENTS
-# =============================
+# ================ INTENTS ================
+
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
-
 bot = commands.Bot(command_prefix="!", intents=intents)
 db = None
-gn_last_trigger = None
+gn_last_trigger = {}
 
-# =============================
-# DATABASE SETUP
-# =============================
+# ================ DATABASE SETUP ================
+
 async def setup_database():
     global db
     db = await asyncpg.create_pool(DATABASE_URL)
@@ -69,9 +65,8 @@ async def setup_database():
             )
         """)
 
-# =============================
-# READY
-# =============================
+# ================ READY ================
+
 @bot.event
 async def on_ready():
     await setup_database()
@@ -81,10 +76,9 @@ async def on_ready():
         birthday_loop.start()
 
     print(f"✅ Logged in as {bot.user}")
-    
-# =============================
-# /mytime
-# =============================
+
+# ================ /mytime ================
+
 @bot.tree.command(name="mytime", description="Set your local time")
 @app_commands.describe(time_str="Example: 1:27 am or 13:27")
 async def mytime(interaction: discord.Interaction, time_str: str):
@@ -131,9 +125,8 @@ async def mytime(interaction: discord.Interaction, time_str: str):
             "❌ Invalid format. Example: 1:27 pm or 13:27"
         )
 
-# =============================
-# /birthday
-# =============================
+# ================ /birthday ================
+
 @bot.tree.command(name="birthday", description="Set your birthday (MM-DD)")
 @app_commands.describe(date="Example: 05-14")
 async def birthday(interaction: discord.Interaction, date: str):
@@ -161,9 +154,8 @@ async def birthday(interaction: discord.Interaction, date: str):
             "❌ Invalid format. Use MM-DD"
         )
 
-# =============================
-# /time
-# =============================
+# ================ /time ================
+
 @bot.tree.command(name="time", description="Check someone's local time")
 @app_commands.describe(member="Select a member")
 async def time(interaction: discord.Interaction, member: discord.Member):
@@ -194,9 +186,8 @@ async def time(interaction: discord.Interaction, member: discord.Member):
         f"⏰ {formatted_time} (UTC{row['utc_offset']:+})"
     )
 
-# =============================
-# BIRTHDAY LOOP
-# =============================
+# ================ BIRTHDAY LOOP ================
+
 @tasks.loop(minutes=1)
 async def birthday_loop():
     utc_now = datetime.now(UTC)
@@ -277,18 +268,36 @@ GIF_HIMENO_REPLY = "https://media.discordapp.net/stickers/1323198799191080960.we
 # Persistent tracker
 himeno_trigger_tracker = defaultdict(list)
 
+# =====================================================
+# HELPER: GET RANDOM GIF
+# =====================================================
+async def get_random_gif(guild_id: int):
+    async with db.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT url FROM goodnight_gifs WHERE guild_id = $1",
+            guild_id
+        )
+
+    if not rows:
+        return None
+
+    return random.choice(rows)["url"]
+
+
 # =============================
-# MESSAGE LISTENER
+# MESSAGE LISTENER (ONLY ONE)
 # =============================
 @bot.event
 async def on_message(message):
 
+    global gn_last_trigger
+
     if message.author.bot:
         return
 
-    # =============================
-    # HIMENO REPLY RESPONSE + AUTO TIMEOUT
-    # =============================
+    # =====================================================
+    # HIMENO SYSTEM
+    # =====================================================
     if message.reference and message.reference.resolved:
         if message.reference.resolved.author.id == HIMENO_ID:
 
@@ -302,236 +311,6 @@ async def on_message(message):
             user_id = message.author.id
             now = datetime.now(UTC)
 
-            # Add timestamp
-            himeno_trigger_tracker[user_id].append(now)
-
-            # Remove entries older than 5 minutes
-            five_minutes_ago = now - timedelta(minutes=5)
-            himeno_trigger_tracker[user_id] = [
-                t for t in himeno_trigger_tracker[user_id]
-                if t > five_minutes_ago
-            ]
-
-            # If triggered 3 times within 5 minutes
-            if len(himeno_trigger_tracker[user_id]) >= 3:
-
-                try:
-                    await message.author.timeout(
-                        timedelta(minutes=5),
-                        reason="Triggered Himeno 3 times in 5 minutes"
-                    )
-
-                    await message.channel.send(
-                        f"⛔ {message.author.mention} timed out for 5 minutes."
-                    )
-
-                except Exception as e:
-                    print("Timeout failed:", e)
-
-                # Reset counter after punishment
-                himeno_trigger_tracker[user_id].clear()
-
-        await bot.process_commands(message)
-        return
-
-    await bot.process_commands(message)
-
-    # =============================
-    # CUSTOM MEBELIKE SYSTEM
-    # =============================
-    if message.mentions:
-
-        for mentioned_user in message.mentions:
-
-            async with db.acquire() as conn:
-                record = await conn.fetchrow("""
-                    SELECT gif_url FROM mebelike
-                    WHERE user_id = $1
-                """, mentioned_user.id)
-
-            if record:
-                embed = discord.Embed(
-                    description=f"{mentioned_user.display_name} be like:",
-                    color=discord.Color.red()
-                )
-                embed.set_image(url=record["gif_url"])
-                await message.channel.send(embed=embed)
-
-    await bot.process_commands(message)
-
-
-# =============================
-# /mebelike (FULL SAFE VERSION)
-# =============================
-@bot.tree.command(name="mebelike", description="Set your '@you be like:' GIF")
-@app_commands.describe(
-    gif="Direct link to your GIF (optional)",
-    file="Upload a GIF or image (optional)"
-)
-async def mebelike(
-    interaction: discord.Interaction,
-    gif: str = None,
-    file: discord.Attachment = None
-):
-
-    if not gif and not file:
-        await interaction.response.send_message(
-            "❌ Provide either a GIF link or upload an image.",
-            ephemeral=True
-        )
-        return
-
-    final_url = None
-
-    # =============================
-    # FILE UPLOAD (PERMANENT STORAGE)
-    # =============================
-    if file:
-
-        allowed_types = [
-            "image/gif",
-            "image/png",
-            "image/jpeg",
-            "image/webp"
-        ]
-
-        if not file.content_type or file.content_type not in allowed_types:
-            await interaction.response.send_message(
-                "❌ Only GIF, PNG, JPG, or WEBP allowed.",
-                ephemeral=True
-            )
-            return
-
-        if file.size > 8 * 1024 * 1024:
-            await interaction.response.send_message(
-                "❌ File too large (max 8MB).",
-                ephemeral=True
-            )
-            return
-
-        # Download file
-        file_bytes = await file.read()
-
-        # Upload to permanent storage channel
-        storage_channel = bot.get_channel(STORAGE_CHANNEL_ID)
-
-        if not storage_channel:
-            await interaction.response.send_message(
-                "❌ Storage channel not found.",
-                ephemeral=True
-            )
-            return
-
-        message = await storage_channel.send(
-            file=discord.File(
-                fp=io.BytesIO(file_bytes),
-                filename=file.filename
-            )
-        )
-
-        # Get permanent CDN URL
-        final_url = message.attachments[0].url
-
-    # =============================
-    # LINK HANDLING
-    # =============================
-    elif gif:
-
-        gif = gif.strip()
-
-        if not gif.startswith("http"):
-            await interaction.response.send_message(
-                "❌ Invalid link.",
-                ephemeral=True
-            )
-            return
-
-        allowed_domains = [
-            "media.tenor.com",
-            "media.giphy.com",
-            "cdn.discordapp.com",
-            "media.discordapp.net"
-        ]
-
-        if not any(domain in gif for domain in allowed_domains):
-            await interaction.response.send_message(
-                "⚠️ Use a direct media link (Tenor/Giphy/Discord).",
-                ephemeral=True
-            )
-            return
-
-        final_url = gif
-
-    # =============================
-    # SAVE TO DATABASE
-    # =============================
-    async with db.acquire() as conn:
-        await conn.execute("""
-            INSERT INTO mebelike (user_id, gif_url, username)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (user_id)
-            DO UPDATE SET
-                gif_url = EXCLUDED.gif_url,
-                username = EXCLUDED.username
-        """,
-        interaction.user.id,
-        final_url,
-        interaction.user.display_name
-        )
-
-    await interaction.response.send_message(
-        "✅ Your '@you be like:' media has been saved!",
-        ephemeral=True
-    )
-
-# ================ GOOD NIGHT WISHES ================
-
-gn_last_trigger = None  # Global cooldown tracker
-
-# =====================================================
-# HELPER: GET RANDOM GIF
-# =====================================================
-
-async def get_random_gif(guild_id: int):
-    async with db.acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT url FROM goodnight_gifs WHERE guild_id = $1",
-            guild_id
-        )
-
-        if not rows:
-            return None
-
-        return random.choice(rows)["url"]
-
-
-# =============================
-# MESSAGE LISTENER
-# =============================
-@bot.event
-async def on_message(message):
-
-    global gn_last_trigger
-
-    if message.author.bot:
-        return
-
-    # =====================================================
-    # HIMENO REPLY AUTO TIMEOUT
-    # =====================================================
-    if message.reference and message.reference.resolved:
-        if message.reference.resolved.author.id == HIMENO_ID:
-
-            embed = discord.Embed(
-                description="what did you say?",
-                color=discord.Color.red()
-            )
-            embed.set_image(url="https://media.discordapp.net/stickers/1323198799191080960.webp?size=160&quality=lossless")
-            await message.channel.send(embed=embed)
-
-            user_id = message.author.id
-            now = datetime.now(UTC)
-
             himeno_trigger_tracker[user_id].append(now)
 
             five_minutes_ago = now - timedelta(minutes=5)
@@ -544,7 +323,7 @@ async def on_message(message):
                 try:
                     await message.author.timeout(
                         timedelta(minutes=5),
-                        reason="Triggered Himeno 3 times in 5 minutes"
+                        reason="Triggered Himeno 3 times"
                     )
                     await message.channel.send(
                         f"⛔ {message.author.mention} timed out for 5 minutes."
@@ -577,17 +356,19 @@ async def on_message(message):
     # GOODNIGHT SYSTEM
     # =====================================================
     if message.guild:
-
         content = message.content.lower().strip()
+        
         triggers = ["gn", "good night", "me go eep", "sleep"]
 
-        if any(trigger in content for trigger in triggers):
+        if re.search(r"\b(gn|good night|me go eep|sleep)\b", content):
 
             now = datetime.now(UTC)
+            
+            last = gn_last_trigger.get(message.guild.id)
 
-            if not gn_last_trigger or (now - gn_last_trigger) >= timedelta(minutes=1):
+            if not last or (now - last) >= timedelta(minutes=1):
 
-                gn_last_trigger = now
+                gn_last_trigger[message.guild.id] = now
 
                 gif_url = await get_random_gif(message.guild.id)
 
@@ -603,7 +384,9 @@ async def on_message(message):
 
                 await message.channel.send(embed=embed)
 
+    # MUST BE LAST
     await bot.process_commands(message)
+
 
 # =====================================================
 # ADMIN: ADD GOODNIGHT GIF
@@ -627,6 +410,10 @@ async def addgngif(interaction: discord.Interaction, url: str = None, file: disc
             return
 
         storage_channel = bot.get_channel(STORAGE_CHANNEL_ID)
+        if not storage_channel:
+            await interaction.response.send_message("❌ Storage channel not found.", ephemeral=True)
+            return
+
         sent = await storage_channel.send(file=await file.to_file())
         final_url = sent.attachments[0].url
 
@@ -645,80 +432,11 @@ async def addgngif(interaction: discord.Interaction, url: str = None, file: disc
 
     await interaction.response.send_message("✅ Goodnight GIF added.", ephemeral=True)
 
-    # =============================
-    # FILE UPLOAD
-    # =============================
-    if file:
-
-        allowed_types = [
-            "image/gif",
-            "image/png",
-            "image/jpeg",
-            "image/webp"
-        ]
-
-        if not file.content_type or file.content_type not in allowed_types:
-            await interaction.response.send_message(
-                "❌ Only GIF, PNG, JPG, WEBP allowed.",
-                ephemeral=True
-            )
-            return
-
-        if file.size > 8 * 1024 * 1024:
-            await interaction.response.send_message(
-                "❌ File too large (max 8MB).",
-                ephemeral=True
-            )
-            return
-
-        storage_channel = bot.get_channel(STORAGE_CHANNEL_ID)
-
-        if not storage_channel:
-            await interaction.response.send_message(
-                "❌ Storage channel not found.",
-                ephemeral=True
-            )
-            return
-
-        sent = await storage_channel.send(file=await file.to_file())
-        final_url = sent.attachments[0].url
-
-    # =============================
-    # URL INPUT
-    # =============================
-    elif url:
-
-        if not url.startswith("http"):
-            await interaction.response.send_message(
-                "❌ Invalid URL.",
-                ephemeral=True
-            )
-            return
-
-        final_url = url
-
-    # =============================
-    # SAVE TO DATABASE
-    # =============================
-    async with db.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO goodnight_gifs (guild_id, url) VALUES ($1, $2)",
-            interaction.guild.id,
-            final_url
-        )
-
-    await interaction.response.send_message(
-        "✅ Goodnight media added successfully.",
-        ephemeral=True
-    )
-
 
 # =====================================================
-# ADMIN COMMAND: REMOVE GIF
+# ADMIN: REMOVE GIF
 # =====================================================
-
 @bot.tree.command(name="removegngif", description="Remove a goodnight GIF by ID (Admin only)")
-@app_commands.describe(gif_id="ID of the GIF (use /listgngifs)")
 async def removegngif(interaction: discord.Interaction, gif_id: int):
 
     if not interaction.user.guild_permissions.administrator:
@@ -741,7 +459,6 @@ async def removegngif(interaction: discord.Interaction, gif_id: int):
 # =====================================================
 # LIST GIFS
 # =====================================================
-
 @bot.tree.command(name="listgngifs", description="List all goodnight GIFs")
 async def listgngifs(interaction: discord.Interaction):
 
@@ -752,10 +469,7 @@ async def listgngifs(interaction: discord.Interaction):
         )
 
     if not rows:
-        await interaction.response.send_message(
-            "No GIFs stored yet.",
-            ephemeral=True
-        )
+        await interaction.response.send_message("No GIFs stored yet.", ephemeral=True)
         return
 
     description = ""
