@@ -336,8 +336,10 @@ async def on_message(message):
     # =====================================================
     # MEBELIKE SYSTEM
     # =====================================================
-    if message.mentions:
+    if message.mentions and message.reference is None:
+
         for mentioned_user in message.mentions:
+
             async with db.acquire() as conn:
                 record = await conn.fetchrow(
                     "SELECT gif_url FROM mebelike WHERE user_id = $1",
