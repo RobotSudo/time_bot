@@ -460,7 +460,7 @@ async def on_message(message):
         
         triggers = ["gn", "good night", "goodnight", "me go eep", "sleep"]
 
-        if re.search(r"\b(gn|good night|me go eep|sleep)\b", content):
+        if re.search(r"\b(gn|good night|goodnight|me go eep|sleep)\b", content):
 
             now = datetime.now(UTC)
             
