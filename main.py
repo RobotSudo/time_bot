@@ -473,9 +473,49 @@ async def mebelike(
         ephemeral=True
     )
 
+# ================ GOOD NIGHT WISHES ================
+
+GOODNIGHT_GIF = "https://discord.com/channels/@me/1436540139269525634/1477166872569843762"
+
+gn_cooldown_tracker = defaultdict(list)
 
 
+@bot.event
+async def on_message(message):
 
+    if message.author.bot:
+        return
+
+    # =============================
+    # GOOD NIGHT TRIGGER (GLOBAL 10 MIN COOLDOWN)
+    # =============================
+    content = message.content.lower().strip()
+
+    goodnight_triggers = [
+        "gn",
+        "good night",
+        "me go eep"
+    ]
+
+    if any(trigger in content for trigger in goodnight_triggers):
+
+        global gn_last_trigger
+        now = datetime.now(UTC)
+
+        # If already triggered within 10 minutes → ignore
+        if gn_last_trigger and (now - gn_last_trigger) < timedelta(minutes=10):
+            return
+
+        # Update last trigger time
+        gn_last_trigger = now
+
+        embed = discord.Embed(
+            description=f"🌙 Good night!",
+            color=discord.Color.dark_blue()
+        )
+        embed.set_image(url=GOODNIGHT_GIF)
+
+        await message.channel.send(embed=embed)
 
 # ================ END OF THE CODE ================
 
