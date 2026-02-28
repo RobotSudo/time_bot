@@ -6,7 +6,7 @@ import asyncpg
 import os
 import io
 from collections import defaultdict
-
+import re
 
 # =============================
 # CONFIG
@@ -477,14 +477,38 @@ async def mebelike(
 
 # ================ GOOD NIGHT WISHES ================
 
-GOODNIGHT_GIF = "https://tenor.com/view/peixe-dormindo-gif-11243001346420037237.gif"
+GOODNIGHT_GIF = "https://media.tenor.com/xxxxxxxxAAAAd/peixe-dormindo.gif"  
+# MUST be:
+# - media.tenor.com
+# - media.discordapp.net / cdn.discordapp.com
+# - media.giphy.com
+# - AND end with .gif / .png / .jpg
 
 gn_last_trigger = None
+
+# =============================
+# VALIDATION FUNCTION
+# =============================
+
+def is_valid_gif_url(url: str) -> bool:
+    valid_domains = [
+        "media.tenor.com",
+        "media.discordapp.net",
+        "cdn.discordapp.com",
+        "media.giphy.com"
+    ]
+
+    # Must end with image extension
+    if not re.search(r"\.(gif|png|jpg|webp)$", url):
+        return False
+
+    return any(domain in url for domain in valid_domains)
 
 
 # =============================
 # MESSAGE LISTENER
 # =============================
+
 @bot.event
 async def on_message(message):
 
@@ -506,8 +530,8 @@ async def on_message(message):
 
         now = datetime.now(UTC)
 
-        # Global 10 minute cooldown
-        if gn_last_trigger and (now - gn_last_trigger) < timedelta(minutes=0):
+        # 10 minute global cooldown
+        if gn_last_trigger and (now - gn_last_trigger) < timedelta(minutes=10):
             return
 
         gn_last_trigger = now
@@ -516,7 +540,12 @@ async def on_message(message):
             description="🌙 Good night!",
             color=discord.Color.dark_blue()
         )
-        embed.set_image(url=GOODNIGHT_GIF)
+
+        # Only attach if valid direct GIF
+        if is_valid_gif_url(GOODNIGHT_GIF):
+            embed.set_image(url=GOODNIGHT_GIF)
+        else:
+            embed.description += "\n\n⚠️ Invalid GIF link configured."
 
         await message.channel.send(embed=embed)
 
