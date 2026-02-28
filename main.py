@@ -494,7 +494,8 @@ async def on_message(message):
     goodnight_triggers = [
         "gn",
         "good night",
-        "me go eep"
+        "me go eep",
+        "sleep"
     ]
 
     if any(trigger in content for trigger in goodnight_triggers):
