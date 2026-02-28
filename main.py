@@ -69,7 +69,6 @@ async def setup_database():
             )
         """)
 
-
 # =============================
 # READY
 # =============================
@@ -489,16 +488,7 @@ async def mebelike(
 
 # ================ GOOD NIGHT WISHES ================
 
-# =====================================================
-# READY EVENT
-# =====================================================
-
-@bot.event
-async def on_ready():
-    await setup_database()
-    await bot.tree.sync()
-    print(f"✅ Logged in as {bot.user}")
-
+gn_last_trigger = None  # Global cooldown tracker
 
 # =====================================================
 # HELPER: GET RANDOM GIF
@@ -516,6 +506,7 @@ async def get_random_gif(guild_id: int):
 
         return random.choice(rows)["url"]
 
+
 # =====================================================
 # GOODNIGHT MESSAGE TRIGGER
 # =====================================================
@@ -529,7 +520,7 @@ async def on_message(message):
         return
 
     if not message.guild:
-        return  # Ignore DMs
+        return
 
     content = message.content.lower().strip()
     triggers = ["gn", "good night", "me go eep", "sleep"]
@@ -538,6 +529,7 @@ async def on_message(message):
 
         now = datetime.now(UTC)
 
+        # Global 10 minute cooldown
         if gn_last_trigger and (now - gn_last_trigger) < timedelta(minutes=10):
             return
 
@@ -557,38 +549,101 @@ async def on_message(message):
 
         await message.channel.send(embed=embed)
 
+    await bot.process_commands(message)
+
 
 # =====================================================
-# ADMIN COMMAND: ADD GIF
+# ADMIN COMMAND: ADD GIF (UPLOAD OR URL)
 # =====================================================
 
 @bot.tree.command(name="addgngif", description="Add a goodnight GIF (Admin only)")
-@app_commands.describe(url="Direct GIF link ending in .gif")
-async def addgngif(interaction: discord.Interaction, url: str):
+@app_commands.describe(
+    url="Direct image/GIF link (optional)",
+    file="Upload a GIF or image (optional)"
+)
+async def addgngif(
+    interaction: discord.Interaction,
+    url: str = None,
+    file: discord.Attachment = None
+):
 
     if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Admins only.", ephemeral=True)
+        return
+
+    if not url and not file:
         await interaction.response.send_message(
-            "❌ Admins only.",
+            "❌ Provide either a URL or upload a file.",
             ephemeral=True
         )
         return
 
-    if not url.endswith(".gif"):
-        await interaction.response.send_message(
-            "❌ Must be a direct .gif link.",
-            ephemeral=True
-        )
-        return
+    final_url = None
 
+    # =============================
+    # FILE UPLOAD
+    # =============================
+    if file:
+
+        allowed_types = [
+            "image/gif",
+            "image/png",
+            "image/jpeg",
+            "image/webp"
+        ]
+
+        if not file.content_type or file.content_type not in allowed_types:
+            await interaction.response.send_message(
+                "❌ Only GIF, PNG, JPG, WEBP allowed.",
+                ephemeral=True
+            )
+            return
+
+        if file.size > 8 * 1024 * 1024:
+            await interaction.response.send_message(
+                "❌ File too large (max 8MB).",
+                ephemeral=True
+            )
+            return
+
+        storage_channel = bot.get_channel(STORAGE_CHANNEL_ID)
+
+        if not storage_channel:
+            await interaction.response.send_message(
+                "❌ Storage channel not found.",
+                ephemeral=True
+            )
+            return
+
+        sent = await storage_channel.send(file=await file.to_file())
+        final_url = sent.attachments[0].url
+
+    # =============================
+    # URL INPUT
+    # =============================
+    elif url:
+
+        if not url.startswith("http"):
+            await interaction.response.send_message(
+                "❌ Invalid URL.",
+                ephemeral=True
+            )
+            return
+
+        final_url = url
+
+    # =============================
+    # SAVE TO DATABASE
+    # =============================
     async with db.acquire() as conn:
         await conn.execute(
             "INSERT INTO goodnight_gifs (guild_id, url) VALUES ($1, $2)",
             interaction.guild.id,
-            url
+            final_url
         )
 
     await interaction.response.send_message(
-        "✅ GIF added successfully.",
+        "✅ Goodnight media added successfully.",
         ephemeral=True
     )
 
@@ -602,10 +657,7 @@ async def addgngif(interaction: discord.Interaction, url: str):
 async def removegngif(interaction: discord.Interaction, gif_id: int):
 
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message(
-            "❌ Admins only.",
-            ephemeral=True
-        )
+        await interaction.response.send_message("❌ Admins only.", ephemeral=True)
         return
 
     async with db.acquire() as conn:
@@ -616,15 +668,9 @@ async def removegngif(interaction: discord.Interaction, gif_id: int):
         )
 
     if result == "DELETE 0":
-        await interaction.response.send_message(
-            "❌ GIF not found.",
-            ephemeral=True
-        )
+        await interaction.response.send_message("❌ GIF not found.", ephemeral=True)
     else:
-        await interaction.response.send_message(
-            "✅ GIF removed.",
-            ephemeral=True
-        )
+        await interaction.response.send_message("✅ GIF removed.", ephemeral=True)
 
 
 # =====================================================
@@ -652,7 +698,7 @@ async def listgngifs(interaction: discord.Interaction):
         description += f"**ID {row['id']}** → {row['url']}\n"
 
     embed = discord.Embed(
-        title="🌙 Stored Goodnight GIFs",
+        title="🌙 Stored Goodnight Media",
         description=description,
         color=discord.Color.dark_blue()
     )
