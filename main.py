@@ -273,8 +273,6 @@ HIMENO_ID = 1467405843065602141
 GIF_SUDO_TAG = "https://media.giphy.com/media/n7TMv8jwpKRA5HdVt2/giphy.gif"
 GIF_HIMENO_REPLY = "https://media.discordapp.net/stickers/1323198799191080960.webp?size=160&quality=lossless"
 
-from collections import defaultdict
-from datetime import datetime, timedelta, UTC
 
 # Persistent tracker
 himeno_trigger_tracker = defaultdict(list)
@@ -511,8 +509,6 @@ async def get_random_gif(guild_id: int):
 # GOODNIGHT MESSAGE TRIGGER
 # =====================================================
 
-@bot.event
-async def on_message(message):
 
     global gn_last_trigger
 
