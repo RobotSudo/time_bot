@@ -7,6 +7,7 @@ import os
 import io
 from collections import defaultdict
 import re
+import random
 
 # =============================
 # CONFIG
@@ -59,12 +60,12 @@ async def setup_database():
             )
         """)
 
-        # GOODNIGHT GIFS TABLE
+        # GOODNIGHT GIF TABLE
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS goodnight_gifs (
-                id SERIAL PRIMARY KEY,
-                guild_id BIGINT NOT NULL,
-                url TEXT NOT NULL
+            id SERIAL PRIMARY KEY,
+            guild_id BIGINT NOT NULL,
+            url TEXT NOT NULL
             )
         """)
 
@@ -515,7 +516,6 @@ async def get_random_gif(guild_id: int):
 
         return random.choice(rows)["url"]
 
-
 # =====================================================
 # GOODNIGHT MESSAGE TRIGGER
 # =====================================================
@@ -538,8 +538,7 @@ async def on_message(message):
 
         now = datetime.now(UTC)
 
-        # 10 minute global cooldown
-        if gn_last_trigger and (now - gn_last_trigger) < timedelta(minutes=10): # <------ cooldown setup
+        if gn_last_trigger and (now - gn_last_trigger) < timedelta(minutes=10):
             return
 
         gn_last_trigger = now
@@ -557,8 +556,6 @@ async def on_message(message):
             embed.description += "\n(No GIFs added yet. Admins can use /addgngif)"
 
         await message.channel.send(embed=embed)
-
-    await bot.process_commands(message)
 
 
 # =====================================================
