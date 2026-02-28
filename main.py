@@ -539,7 +539,7 @@ async def on_message(message):
         now = datetime.now(UTC)
 
         # 10 minute global cooldown
-        if gn_last_trigger and (now - gn_last_trigger) < timedelta(minutes=10):
+        if gn_last_trigger and (now - gn_last_trigger) < timedelta(minutes=10): # <------ cooldown setup
             return
 
         gn_last_trigger = now
