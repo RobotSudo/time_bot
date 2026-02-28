@@ -477,7 +477,7 @@ async def mebelike(
 
 # ================ GOOD NIGHT WISHES ================
 
-GOODNIGHT_GIF = "https://discord.com/channels/@me/1436540139269525634/1477166872569843762"
+GOODNIGHT_GIF = "https://klipy.com/gifs/kittensleep-cute"
 
 gn_last_trigger = None
 
