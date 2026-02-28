@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, UTC
 import asyncpg
 import os
 import io
+from collections import defaultdict
+
 
 # =============================
 # CONFIG
@@ -477,18 +479,20 @@ async def mebelike(
 
 GOODNIGHT_GIF = "https://discord.com/channels/@me/1436540139269525634/1477166872569843762"
 
-gn_cooldown_tracker = defaultdict(list)
+gn_last_trigger = None
 
 
+# =============================
+# MESSAGE LISTENER
+# =============================
 @bot.event
 async def on_message(message):
+
+    global gn_last_trigger
 
     if message.author.bot:
         return
 
-    # =============================
-    # GOOD NIGHT TRIGGER (GLOBAL 10 MIN COOLDOWN)
-    # =============================
     content = message.content.lower().strip()
 
     goodnight_triggers = [
@@ -500,23 +504,23 @@ async def on_message(message):
 
     if any(trigger in content for trigger in goodnight_triggers):
 
-        global gn_last_trigger
         now = datetime.now(UTC)
 
-        # If already triggered within 10 minutes → ignore
+        # Global 10 minute cooldown
         if gn_last_trigger and (now - gn_last_trigger) < timedelta(minutes=10):
             return
 
-        # Update last trigger time
         gn_last_trigger = now
 
         embed = discord.Embed(
-            description=f"🌙 Good night!",
+            description="🌙 Good night!",
             color=discord.Color.dark_blue()
         )
         embed.set_image(url=GOODNIGHT_GIF)
 
         await message.channel.send(embed=embed)
+
+    await bot.process_commands(message)
 
 # ================ END OF THE CODE ================
 
