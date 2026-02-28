@@ -186,6 +186,105 @@ async def time(interaction: discord.Interaction, member: discord.Member):
         f"⏰ {formatted_time} (UTC{row['utc_offset']:+})"
     )
 
+# =====================================================
+# /mebelike
+# =====================================================
+@bot.tree.command(name="mebelike", description="Set your '@you be like:' GIF")
+@app_commands.describe(
+    gif="Direct link to your GIF (optional)",
+    file="Upload a GIF or image (optional)"
+)
+async def mebelike(
+    interaction: discord.Interaction,
+    gif: str = None,
+    file: discord.Attachment = None
+):
+
+    if not gif and not file:
+        await interaction.response.send_message(
+            "❌ Provide either a GIF link or upload an image.",
+            ephemeral=True
+        )
+        return
+
+    final_url = None
+
+    # =============================
+    # FILE UPLOAD (PERMANENT STORAGE)
+    # =============================
+    if file:
+
+        allowed_types = [
+            "image/gif",
+            "image/png",
+            "image/jpeg",
+            "image/webp"
+        ]
+
+        if not file.content_type or file.content_type not in allowed_types:
+            await interaction.response.send_message(
+                "❌ Only GIF, PNG, JPG, or WEBP allowed.",
+                ephemeral=True
+            )
+            return
+
+        if file.size > 8 * 1024 * 1024:
+            await interaction.response.send_message(
+                "❌ File too large (max 8MB).",
+                ephemeral=True
+            )
+            return
+
+        storage_channel = bot.get_channel(STORAGE_CHANNEL_ID)
+
+        if not storage_channel:
+            await interaction.response.send_message(
+                "❌ Storage channel not found.",
+                ephemeral=True
+            )
+            return
+
+        sent = await storage_channel.send(file=await file.to_file())
+        final_url = sent.attachments[0].url
+
+    # =============================
+    # LINK INPUT
+    # =============================
+    elif gif:
+
+        gif = gif.strip()
+
+        if not gif.startswith("http"):
+            await interaction.response.send_message(
+                "❌ Invalid link.",
+                ephemeral=True
+            )
+            return
+
+        final_url = gif
+
+    # =============================
+    # SAVE TO DATABASE
+    # =============================
+    async with db.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO mebelike (user_id, gif_url, username)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                gif_url = EXCLUDED.gif_url,
+                username = EXCLUDED.username
+        """,
+        interaction.user.id,
+        final_url,
+        interaction.user.display_name
+        )
+
+    await interaction.response.send_message(
+        "✅ Your '@you be like:' media has been saved!",
+        ephemeral=True
+    )
+
 # ================ BIRTHDAY LOOP ================
 
 @tasks.loop(minutes=1)
@@ -263,7 +362,6 @@ SUDO_ID = 1288247401752166453
 HIMENO_ID = 1467405843065602141
 GIF_SUDO_TAG = "https://media.giphy.com/media/n7TMv8jwpKRA5HdVt2/giphy.gif"
 GIF_HIMENO_REPLY = "https://media.discordapp.net/stickers/1323198799191080960.webp?size=160&quality=lossless"
-
 
 # Persistent tracker
 himeno_trigger_tracker = defaultdict(list)
