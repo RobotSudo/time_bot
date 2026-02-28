@@ -477,7 +477,7 @@ async def mebelike(
 
 # ================ GOOD NIGHT WISHES ================
 
-GOODNIGHT_GIF = "https://tenor.com/view/peixe-dormindo-gif-11243001346420037237"
+GOODNIGHT_GIF = "https://tenor.com/view/peixe-dormindo-gif-11243001346420037237.gif"
 
 gn_last_trigger = None
 
