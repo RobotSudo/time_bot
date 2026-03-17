@@ -590,16 +590,8 @@ async def listgngifs(interaction: discord.Interaction):
 # DEADLOCK MID GAME VOICECHAT TIMER
 # =====================================================
 
-mid_game = bot.get_channel(int(1442780309371490314))
-green_lane = bot.get_channel(int(1442781518404780072))
-yellow_lane = bot.get_channel(int(1442781702417023027))
-blue_lane = bot.get_channel(int(1475197004916199587))
 
-print(mid_game.name)
-print(green_lane.name)
-print(yellow_lane.name)
-print(blue_lane.name)
- 
+
 async def move_all(start_channel: VocalGuildChannel, end_channel: VocalGuildChannel):
     members = start_channel.members
     for user in members:
@@ -632,6 +624,12 @@ async def deadlock_game(interaction: discord.Interaction, duration: str):
         return # later
     
     await asyncio.sleep(duration)
+    
+    mid_game = bot.get_channel(1442780309371490314)
+    green_lane = bot.get_channel(1442781518404780072)
+    yellow_lane = bot.get_channel(1442781702417023027)
+    blue_lane = bot.get_channel(1475197004916199587)
+
     await move_all(green_lane, mid_game)
     await move_all(blue_lane, mid_game)
     await move_all(yellow_lane, mid_game)
