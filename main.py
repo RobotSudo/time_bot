@@ -623,8 +623,10 @@ async def deadlock_game(interaction: discord.Interaction, duration: str):
     if not duration:
         return # later
     
+    await interaction.response.send_message(f"Game timer set up to `{duration}s`, have a good game!", ephemeral=True)
+
     await asyncio.sleep(duration)
-    
+
     mid_game = bot.get_channel(1442780309371490314)
     green_lane = bot.get_channel(1442781518404780072)
     yellow_lane = bot.get_channel(1442781702417023027)
