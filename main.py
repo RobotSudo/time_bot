@@ -594,7 +594,7 @@ async def test(interaction: discord.Interaction, start_channel_id: str, end_chan
     members = start_channel.members
     usernames = ", ".join([x._user.name for x in members])
     for user in members:
-        user.move_to(end_channel)
+        await user.move_to(end_channel)
 
     await interaction.response.send_message(f"channel: {start_channel_id}, users: {usernames}")
 
