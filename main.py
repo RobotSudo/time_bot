@@ -590,10 +590,10 @@ async def listgngifs(interaction: discord.Interaction):
 # DEADLOCK MID GAME VOICECHAT TIMER
 # =====================================================
 
-mid_game = bot.get_channel(1442780309371490314)
-green_lane = bot.get_channel(1442781518404780072)
-yellow_lane = bot.get_channel(1442781702417023027)
-blue_lane = bot.get_channel(1475197004916199587)
+mid_game = bot.get_channel(int(1442780309371490314))
+green_lane = bot.get_channel(int(1442781518404780072))
+yellow_lane = bot.get_channel(int(1442781702417023027))
+blue_lane = bot.get_channel(int(1475197004916199587))
 
 print(mid_game.name)
 print(green_lane.name)
