@@ -1,5 +1,6 @@
 import discord
 from discord import app_commands
+from discord.channel import VocalGuildChannel
 from discord.ext import commands, tasks
 from datetime import datetime, timedelta, UTC
 import asyncpg
@@ -8,6 +9,7 @@ import io
 from collections import defaultdict
 import re
 import random
+import asyncio
 
 # ================ CONFIG ================
 
@@ -584,19 +586,56 @@ async def listgngifs(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
+# =====================================================
+# DEADLOCK MID GAME VOICECHAT TIMER
+# =====================================================
 
-# ================ END OF THE CODE ================
-
-@bot.tree.command(name="test", description="test")
-async def test(interaction: discord.Interaction, start_channel_id: str, end_channel_id: str):
-    start_channel = bot.get_channel(int(start_channel_id))
-    end_channel = bot.get_channel(int(end_channel_id))
+mid_game = bot.get_channel(1442780309371490314)
+green_lane = bot.get_channel(1442781518404780072)
+yellow_lane = bot.get_channel(1442781702417023027)
+blue_lane = bot.get_channel(1475197004916199587)
+ 
+async def move_all(start_channel: VocalGuildChannel, end_channel: VocalGuildChannel):
     members = start_channel.members
-    usernames = ", ".join([x._user.name for x in members])
     for user in members:
         await user.move_to(end_channel)
 
-    await interaction.response.send_message(f"channel: {start_channel_id}, users: {usernames}")
+    return
+
+def parse_time(time_str: str) -> int:
+    match = re.fullmatch(r"(\d+)([smh])", time_str.lower())
+    if not match:
+        return 0
+
+    value, unit = match.groups()
+    value = int(value)
+
+    if unit == "s":
+        return value
+    elif unit == "m":
+        return value * 60
+    elif unit == "h":
+        return value * 3600
+
+    return 0
+
+@bot.tree.command(name="deadlock_game", description="Deadlock command for voice chat")
+async def deadlock_game(interaction: discord.Interaction, duration: str):
+    duration = parse_time(duration)
+
+    if not duration:
+        return # later
+    
+    await asyncio.sleep(duration)
+    await move_all(green_lane, mid_game)
+    await move_all(blue_lane, mid_game)
+    await move_all(yellow_lane, mid_game)
+
+    return
+    
+
+
+# ================ END OF THE CODE ================
 
 # =============================
 # RUN
