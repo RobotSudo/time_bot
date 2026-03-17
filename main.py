@@ -588,13 +588,15 @@ async def listgngifs(interaction: discord.Interaction):
 # ================ END OF THE CODE ================
 
 @bot.tree.command(name="test", description="test")
-async def test(interaction: discord.Interaction, channel_id: str):
-    channel_id = int(channel_id)
-    channel  = bot.get_channel(channel_id)
-    channel.members
-    usernames = ", ".join([x._user.name for x in channel.members])
+async def test(interaction: discord.Interaction, start_channel_id: str, end_channel_id: str):
+    start_channel = bot.get_channel(int(start_channel_id))
+    end_channel = bot.get_channel(int(end_channel_id))
+    members = start_channel.members
+    usernames = ", ".join([x._user.name for x in members])
+    for user in members:
+        user.move_to(end_channel)
 
-    await interaction.response.send_message(f"channel: {channel_id}, users: {usernames}")
+    await interaction.response.send_message(f"channel: {start_channel_id}, users: {usernames}")
 
 # =============================
 # RUN
