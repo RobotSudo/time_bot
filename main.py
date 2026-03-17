@@ -584,7 +584,13 @@ async def listgngifs(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
+
 # ================ END OF THE CODE ================
+
+@bot.tree.command(name="test", description="")
+async def test(interaction: discord.Interaction):
+    
+    await interaction.response.send_message("this is test")
 
 # =============================
 # RUN
