@@ -626,7 +626,7 @@ async def deadlock_game(interaction: discord.Interaction, duration: str):
     if not duration:
         return # later
     
-    await interaction.response.send_message(f"Game timer set up to `{duration}s`, have a good game!", ephemeral=True)
+    await interaction.response.send_message(f"Game timer set up to `{duration}s`, have a good game!")
 
     await asyncio.sleep(duration)
 
