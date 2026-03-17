@@ -587,7 +587,7 @@ async def listgngifs(interaction: discord.Interaction):
 
 # ================ END OF THE CODE ================
 
-@bot.tree.command(name="test", description="")
+@bot.tree.command(name="test", description="test")
 async def test(interaction: discord.Interaction):
     
     await interaction.response.send_message("this is test")
